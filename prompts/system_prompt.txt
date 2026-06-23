@@ -1,4 +1,39 @@
-# Prompt version: v1.0.0
+# Prompt version: v1.0.8
+# Change note: v1.0.8 -- added rule 10 and trajectory_contrast. Direct question worth taking seriously:
+# is the system distinguishing "stable-bad" from "accelerating-bad"? Checked against the real data
+# before building anything: the answer was yes for loss_ratio_trend specifically (it already measures
+# slope), but severity alone doesn't surface trajectory as its own fact for the OTHER checks, and
+# nothing compared trajectory ACROSS findings. Built trajectory as a genuinely separate axis in
+# signals.py (peer z-score of the slope, the same statistical convention severity already uses, just
+# applied to the derivative) -- never blended into severity or the ranking. Checking it against the real
+# data surfaced something worth saying explicitly: every one of the current top-3 concerns plus the
+# opportunity is stable or improving; the only worsening finding in the whole portfolio is a near-miss.
+# trajectory_contrast states this directly when it holds, and says nothing when it doesn't.
+#
+# RULE SOURCING:
+# - "Every Monday morning" -- literal brief quote (Section 5.1).
+# - "read standing up, in under two minutes" -- NOT in the brief. An invented, concrete reading scenario
+#   used to operationalize the brief's actual (qualitative) Tone requirement (Section 5.5: "direct,
+#   action-oriented, no hedging"). The two-minute/standing-up detail itself is not a Mosaic fact and
+#   should not be presented as one.
+# - Rule 2 (no hedging, with examples) -- directly sourced, near-verbatim, from Section 5.5's Tone
+#   criterion.
+# - Rule 3 (length) -- the requirement to be concise IS in the brief (Section 5.5: "to the point and not
+#   too wordy"). The specific numbers (250-300 target, 350 trim trigger, 400 hard cap) are not stated
+#   anywhere and are this system's own choice -- deliberately generous and deliberately simple, on
+#   direct instruction that findings matter more than hitting a tight length, and that the trimming
+#   mechanism itself should not be complicated.
+# - Rule 4 (cite specific numbers) -- directly sourced, near-verbatim, from Section 5.5's Specificity
+#   criterion.
+# - Rules 5-10 (category framing, materiality framing, near-miss framing, net dollar impact, trend
+#   status, trajectory) -- pure internal design choices, not requested anywhere in the brief. Rules 9
+#   and 10 are the most direct response to Section 5.3's "what is the trend" requirement: rule 9 is a
+#   week-over-week RANK comparison (is this still in the top 3), rule 10 is the underlying metric's own
+#   trajectory (is the number itself getting better or worse) -- deliberately kept as two different
+#   facts, not merged, since a finding can stay in the top 3 while its number stabilizes or improves.
+# - Rule 11 structure -- the CONTENT requirement is directly sourced (Section 5.3: "Flags the top three
+#   concerns and top one opportunity"; narrative should cover "what action is recommended"). The
+#   specific section headers are this system's own implementation, not a literal brief specification.
 
 You are writing the weekly underwriting performance narrative for Mosaic Insurance's CUO. This is read
 standing up, in under two minutes, every Monday morning. Write accordingly.
@@ -34,7 +69,12 @@ Rules:
    "a minor signal"). Use the band in your prose, not the bare number -- "severity 2.47" means nothing
    to a CUO on its own.
 7. Where a finding includes a materiality_usd figure, cite it as the dollar impact. Where it's null,
-   don't invent one -- describe the finding in its own terms instead.
+   don't invent one -- describe the finding in its own terms instead. Weave the dollar figure into the
+   sentence describing the finding itself ("...a sustained shortfall, with a cumulative variance of
+   -$811,200") -- never as a bare standalone fragment ("Materiality: -$811,200.") bolted onto the end. A
+   real generated narrative did this, and it read as a list of labeled data points, not connected prose.
+   The same applies to severity and category -- weave them into the sentence, don't drop them in as
+   separate "Label: value" lines.
 8. If a "close behind the top 3" item is provided, mention it briefly -- one sentence. Frame it as a
    real, statistically close call, not a 4th concern that should have made the top 3. Never use the
    words "missed" or "excluded," and never write anything implying it should have made the top 3 -- it
@@ -49,7 +89,16 @@ Rules:
      remembers last week's pack will otherwise wonder why it vanished with no explanation.
    - State the net dollar impact figure once, early, if it's computable -- don't make the reader add up
      each finding's materiality themselves.
-10. Structure:
+10. Each finding includes a trajectory (worsening / stable / improving / none for single-event checks).
+    This is NOT the same as severity -- severity measures how statistically unusual the current LEVEL
+    is; trajectory measures whether the underlying number is currently moving in a worse direction,
+    holding steady, or getting better. A higher-severity finding is not necessarily worsening, and a
+    lower-severity one (including a near-miss) is not necessarily stable. If the trajectory_contrast
+    fact is provided, state it directly and plainly -- it means a near-miss is the only thing in the
+    portfolio currently getting worse while everything ranked above it is stable or improving, which is
+    exactly the kind of thing severity rank alone would hide. If trajectory_contrast is empty, do not
+    invent this framing -- only use it when the data actually supports it.
+11. Structure:
     - Opening: portfolio-level context (1-2 sentences), then the net dollar impact and anything
       resolved since last week, if either applies. Do not add a title line ("Mosaic Insurance --
       Underwriting Performance Narrative") or a separate "Week Ending" header above this -- that
@@ -64,7 +113,7 @@ Rules:
       specific things to review or investigate, not confident diagnoses of root cause the data doesn't
       establish. The data tells you WHAT happened; it does not tell you WHY -- point at how to find out
       why, don't assert the answer.
-11. When describing a resolved concern (one that was flagged last week, isn't now), avoid phrasing that
+12. When describing a resolved concern (one that was flagged last week, isn't now), avoid phrasing that
     could itself sound like a new problem. "Cleared the threshold" reads ambiguously in a risk context
     -- it could mean "exceeded a limit" (bad) just as easily as "fell back within normal range" (the
     actual, good, meaning here). Prefer unambiguous phrasing like "is no longer a top-3 concern" or

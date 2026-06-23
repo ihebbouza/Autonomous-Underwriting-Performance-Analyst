@@ -114,6 +114,29 @@ reintroduce the same bias one level up. The dashboard and narratives show both, 
 narrative prompts explicitly instruct against implying one finding is simply "worse" than another just
 because it's ranked higher.
 
+**A third, separate axis — Trajectory** (`SignalDetector._trajectory`): is the finding's underlying
+metric currently getting worse, holding steady, or improving — answered as a peer z-score of the
+*slope*, the identical statistical convention severity already uses for the *level*, just applied one
+derivative deeper. Like materiality, **never blended into severity or the ranking**. Built after a
+direct question worth taking seriously: does this project distinguish "stable-bad" from
+"accelerating-bad"? `loss_ratio_trend` already measured slope for detection purposes, but nothing
+compared trajectory *across* findings, and nothing surfaced it as its own fact for the other four
+checks. Checking the real data before writing any code turned up something worth saying out loud: every
+one of the current top-3 concerns plus the opportunity is stable or improving, and the *only* finding
+in the entire portfolio still getting worse is Environmental — which ranks 4th, a near-miss, under pure
+severity. `AnalystAgent._compute_trajectory_contrast` states this explicitly when it holds, and
+deliberately returns nothing when it doesn't (e.g., if a top-3 finding is also worsening) — a real,
+checked fact about a given week, never a framing forced to make a point. `claims_anomaly` has no
+trajectory (`None`): it's inherently a single-week-vs-history comparison, not a multi-week trend, and
+there's no slope concept that meaningfully applies to a one-off shock.
+
+One real bug caught while building this: `hit_rate_collapse`'s trajectory initially used the same
+generic 6-week window as every other check, which silently included the collapse event itself —
+Cyber's hit rate sat near baseline for the first 2 of those 6 weeks, then crashed, producing a slope
+dominated by the crash rather than by what's happened since. Fixed by using the check's own "recent"
+window (`HIT_RATE_RECENT_WEEKS`, 4) for this one check specifically, since that's the period whose
+*own* direction is actually the question.
+
 **Categories** (`config.CHECK_CATEGORY`, `config.CATEGORY_EXPLANATION`): each check maps to a
 human-readable risk category (Premium Risk, Conversion Risk, Loss Cost Trend Risk, Claims Shock Risk,
 Distribution Friction Risk, Growth Opportunity), and every category has a one-sentence plain-language
@@ -260,7 +283,7 @@ edits from quietly widening its scope.
 
 ---
 
-## Test coverage (64 tests)
+## Test coverage (103 tests)
 
 | File | What it covers |
 |---|---|
@@ -314,3 +337,7 @@ pack always ships. `narrative_source` in the output always records which path ac
 - The per-LoB narrative and the main weekly narrative are generated independently and could, in
   principle, frame the same finding slightly differently in wording (not in numbers — both pull from the
   same `summary` dict). Not observed in practice, but not structurally prevented either.
+- ~~"N weeks running" tracks rank persistence, not the underlying metric's trajectory~~ — addressed.
+  See "Trajectory: a third, separate axis" above. `SignalDetector` now computes trajectory directly
+  (peer z-score of the slope) for every check except `claims_anomaly`, kept structurally separate from
+  severity and the ranking itself, the same way materiality already is.

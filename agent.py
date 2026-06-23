@@ -37,7 +37,26 @@ class AnalystAgent:
         result["portfolio_kpis"] = self.loader.portfolio_kpis(as_of_week)
         result["trend"] = self._compute_trend(as_of_week, result)
         result["net_materiality_usd"] = self._compute_net_materiality(result)
+        result["trajectory_contrast"] = self._compute_trajectory_contrast(result)
         return result
+
+    @staticmethod
+    def _compute_trajectory_contrast(result):
+        """
+        If a near-miss is genuinely worsening while nothing in the top 3 + opportunity is, that's worth
+        saying explicitly -- it's the clearest demonstration that statistical rank (severity) and
+        forward-looking risk (trajectory) are different questions, and it's exactly the situation that
+        prompted building trajectory as its own axis in the first place. Computed fresh each time, not
+        assumed to hold -- if the underlying data ever changes so that a top-3 finding IS worsening too,
+        this deliberately returns None rather than force a comparison that's no longer clean.
+        """
+        worsening_near_miss = [f for f in result["near_miss_concerns"] if f.get("trajectory") == "worsening"]
+        if not worsening_near_miss:
+            return None
+        top_findings = result["top_concerns"] + result["top_opportunities"]
+        if any(f.get("trajectory") == "worsening" for f in top_findings):
+            return None
+        return [f["lob"] for f in worsening_near_miss]
 
     @staticmethod
     def _compute_net_materiality(result):

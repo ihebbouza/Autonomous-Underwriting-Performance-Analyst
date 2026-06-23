@@ -48,3 +48,46 @@ def test_as_of_week_time_travel():
     weeks = agent.loader.available_weeks()
     early_summary = agent.analyze(as_of_week=weeks[5])
     assert early_summary["as_of_week"] == str(weeks[5].date())
+
+
+def test_trajectory_contrast_on_real_data():
+    # The actual, verified finding: on the real data, the only worsening finding is a near-miss
+    # (Environmental), and every top-3 concern plus the opportunity is stable or improving -- so the
+    # contrast should fire and name Environmental specifically.
+    agent = AnalystAgent()
+    summary = agent.analyze()
+    assert summary["trajectory_contrast"] == ["Environmental"]
+
+
+def test_trajectory_contrast_returns_none_when_a_top_finding_is_also_worsening():
+    from agent import AnalystAgent as _Agent
+
+    result = {
+        "top_concerns": [{"lob": "A", "trajectory": "worsening"}, {"lob": "B", "trajectory": "stable"}],
+        "top_opportunities": [{"lob": "C", "trajectory": "improving"}],
+        "near_miss_concerns": [{"lob": "D", "trajectory": "worsening"}],
+    }
+    # The contrast must not fire if a top-3 finding is ALSO worsening -- forcing the framing when it
+    # doesn't cleanly hold would be exactly the kind of reverse-engineered claim this feature exists
+    # to avoid making.
+    assert _Agent._compute_trajectory_contrast(result) is None
+
+
+def test_trajectory_contrast_returns_none_when_no_near_miss_is_worsening():
+    from agent import AnalystAgent as _Agent
+    result = {
+        "top_concerns": [{"lob": "A", "trajectory": "stable"}],
+        "top_opportunities": [],
+        "near_miss_concerns": [{"lob": "D", "trajectory": "stable"}],
+    }
+    assert _Agent._compute_trajectory_contrast(result) is None
+
+
+def test_trajectory_contrast_fires_correctly_on_a_clean_synthetic_case():
+    from agent import AnalystAgent as _Agent
+    result = {
+        "top_concerns": [{"lob": "A", "trajectory": "stable"}, {"lob": "B", "trajectory": "improving"}],
+        "top_opportunities": [{"lob": "C", "trajectory": "stable"}],
+        "near_miss_concerns": [{"lob": "D", "trajectory": "worsening"}, {"lob": "E", "trajectory": "stable"}],
+    }
+    assert _Agent._compute_trajectory_contrast(result) == ["D"]

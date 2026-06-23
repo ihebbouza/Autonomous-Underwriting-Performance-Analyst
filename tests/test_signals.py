@@ -220,3 +220,70 @@ def test_near_miss_rule_is_generic_not_hardcoded_to_a_name():
     # mechanism doesn't crash or reference Environmental when it isn't even in the picture.
     assert "Environmental" not in [f["lob"] for f in result["near_miss_concerns"]]
     assert "Excess Casualty" in top_3_lobs
+
+
+def test_trajectory_does_not_affect_top3_ranking(df):
+    # The critical invariant: trajectory is a separate axis, never blended into severity or the
+    # ranking itself -- the same reasoning that already keeps materiality separate. Confirmed directly:
+    # the top-3 lobs and their severities must be identical whether or not trajectory is computed.
+    result = SignalDetector().find_all(df)
+    top3_lobs_and_severities = [(f["lob"], f["severity"]) for f in result["top_concerns"]]
+    assert top3_lobs_and_severities == [
+        ("Excess Casualty", 2.47), ("Cyber", 2.28), ("Transactional Liability", 1.98)
+    ]
+
+
+def test_claims_anomaly_has_no_trajectory(df):
+    # claims_anomaly is inherently a single-week-vs-history comparison -- no slope concept applies.
+    result = SignalDetector().find_all(df)
+    claims_findings = [f for f in result["all_concerns"] if f["check"] == "claims_anomaly"]
+    assert len(claims_findings) > 0  # sanity: this check did fire on the real data
+    for f in claims_findings:
+        assert f["trajectory"] is None
+        assert f["trajectory_z"] is None
+
+
+def test_other_checks_have_a_trajectory_label(df):
+    result = SignalDetector().find_all(df)
+    for f in result["all_concerns"] + result["all_opportunities"]:
+        if f["check"] != "claims_anomaly":
+            assert f["trajectory"] in ("worsening", "stable", "improving")
+            assert isinstance(f["trajectory_z"], float)
+
+
+def test_environmental_is_the_only_worsening_finding_on_real_data():
+    # The actual, verified finding that prompted building this feature: on the real data, every one of
+    # the top-3 concerns plus the top opportunity is improving, and the only finding marked "worsening"
+    # is Environmental -- which ranks 4th (a near-miss) under pure severity. This is a real, checked
+    # fact about this dataset, not a hard-coded expectation reverse-engineered to look a certain way --
+    # if the underlying data changed, this test would need updating, not the other way around.
+    result = SignalDetector().find_all(DataLoader().load())
+    for f in result["top_concerns"] + result["top_opportunities"]:
+        assert f["trajectory"] in ("improving", "stable", None), f"{f['lob']} unexpectedly worsening"
+        if f["check"] == "claims_anomaly":
+            assert f["trajectory"] is None  # single-event check -- no trajectory concept applies
+        else:
+            assert f["trajectory"] in ("improving", "stable")
+    env = [f for f in result["near_miss_concerns"] if f["lob"] == "Environmental"]
+    assert len(env) == 1
+    assert env[0]["trajectory"] == "worsening"
+
+
+def test_hit_rate_trajectory_uses_the_checks_own_recent_window_not_a_generic_one():
+    # Regression test for a real bug found while building this: a generic 6-week trajectory window for
+    # hit_rate_collapse straddles the baseline/recent boundary the check itself defines, mixing the
+    # magnitude of the original collapse into the slope alongside whatever's happened since. Cyber's
+    # 6-week slope was -2.86 (dominated by the crash itself); its actual post-collapse trajectory (the
+    # 4-week window the check's own "recent" period covers) is +1.91 -- recovering, not still declining.
+    df = DataLoader().load()
+    result = SignalDetector().find_all(df)
+    cyber = [f for f in result["all_concerns"] if f["lob"] == "Cyber" and f["check"] == "hit_rate_collapse"]
+    assert len(cyber) == 1
+    assert cyber[0]["trajectory"] == "improving"
+
+
+def test_trajectory_peer_z_handles_zero_variance_without_crashing():
+    s = pd.Series({"A": 5.0, "B": 5.0, "C": 5.0})
+    label, z = SignalDetector._trajectory(s, "A", deteriorating_sign=1)
+    assert label == "stable"
+    assert z == 0.0

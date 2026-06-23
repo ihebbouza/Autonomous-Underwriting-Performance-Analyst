@@ -64,6 +64,12 @@ LOSS_RATIO_TREND_WINDOW = 6        # weeks, fit with a linear regression, not an
 LOSS_RATIO_SLOPE_ALERT = 1.0       # percentage points per week
 LOSS_RATIO_PROXIMITY_FLOOR = 50.0  # only counts if already within real striking distance of the target
 
+# Same window, used generically for trajectory below -- kept as a separate constant from
+# LOSS_RATIO_TREND_WINDOW (even though both are currently 6) so changing one doesn't silently change
+# the other's meaning; they answer different questions (is loss ratio bad enough to flag vs. is any
+# flagged finding's underlying metric currently getting better or worse).
+TREND_WINDOW_WEEKS = 6
+
 # ---------------------------------------------------------------------------
 # CHECK D -- Claims anomaly (the one check with no brief-given definition at all)
 # Source: z > 2.0 is the standard textbook convention for "statistically unusual" (roughly the 95th
@@ -93,6 +99,18 @@ TOP_N_OPPORTUNITIES = 1
 # never a hard-coded name.
 NEAR_MISS_SEVERITY_MARGIN = 0.5
 
+# Trajectory: is a finding's underlying metric getting worse, holding steady, or getting better, over
+# the same kind of recent window used elsewhere (config.LOSS_RATIO_TREND_WINDOW). This is a SEPARATE
+# axis from severity, never blended into it or into the top-3 ranking -- exactly the same reasoning that
+# keeps materiality separate from severity. Computed as a peer z-score of the SLOPE (not the level),
+# reusing the identical statistical convention already used for severity itself, just applied to the
+# derivative. Built after checking the real data first: the current top-2 concerns are flat or
+# recovering, not accelerating, while a lower-ranked near-miss (Environmental) is the only finding
+# genuinely still getting worse -- a fact a CUO would want surfaced even though it doesn't change the
+# statistical ranking. The 0.5 threshold reuses NEAR_MISS_SEVERITY_MARGIN's convention for consistency,
+# not a separately tuned number.
+TRAJECTORY_STABLE_MARGIN = 0.5
+
 # Human-readable risk categories, used in the narrative and dashboard so findings read as different
 # KINDS of risk rather than competitors on one artificial scale. See README for the reasoning.
 CHECK_CATEGORY = {
@@ -113,7 +131,8 @@ CATEGORY_EXPLANATION = {
     "Growth Opportunity": "the line is writing more premium than budgeted, consistently",
     "Conversion Risk": "fewer quotes are converting into bound policies than is normal for this line",
     "Loss Cost Trend Risk": "claims activity relative to premium is trending the wrong way, not just sitting high",
-    "Claims Shock Risk": "a single week's claims came in well outside this line's own normal range",
+    "Claims Shock Risk": "this kind of spike is either a one-off large claim or the early sign of a worsening "
+                          "pattern -- the data alone can't say which",
     "Distribution Friction Risk": "quotes for this line are taking longer than peer lines to move through underwriting, "
                                    "which can point to broker hesitation or pricing friction",
 }

@@ -118,7 +118,10 @@ with tab_overview:
 
     st.subheader("Top Concerns")
     st.caption("Ranked by statistical severity relative to peers -- not the same as business urgency. "
-               "See the materiality figure for dollar impact where it's directly computable.")
+               "See the materiality figure for dollar impact where it's directly computable, and the "
+               "trajectory badge for whether the underlying number is currently getting worse, holding "
+               "steady, or improving -- a separate question from severity rank.")
+    traj_color = {"worsening": "red", "stable": "gray", "improving": "green"}
     for f in summary["top_concerns"]:
         with st.container(border=True):
             card_cols = st.columns([4, 1])
@@ -129,14 +132,27 @@ with tab_overview:
             card_cols[1].metric("Severity", f"{f['severity']}")
             st.write(escape_dollar_signs(f["detail"]))
             st.caption(f"Materiality: {escape_dollar_signs(fmt_usd(f['materiality_usd']))}")
+            if f.get("trajectory"):
+                st.badge(f"Trajectory: {f['trajectory']}", color=traj_color.get(f["trajectory"], "gray"))
 
     if summary.get("near_miss_concerns"):
         st.caption("Close behind the top 3, within a small statistical margin of the cutoff -- worth "
                    "knowing about, not a missed signal:")
         for f in summary["near_miss_concerns"]:
-            nm_cols = st.columns([1, 5])
+            nm_cols = st.columns([1, 1, 4])
             nm_cols[0].badge("WATCH", color="orange")
-            nm_cols[1].markdown(f"_{f['lob']} ({f['category']})_ — severity {f['severity']}, just outside the top 3.")
+            if f.get("trajectory"):
+                nm_cols[1].badge(f["trajectory"], color=traj_color.get(f["trajectory"], "gray"))
+            nm_cols[2].markdown(f"_{f['lob']} ({f['category']})_ — severity {f['severity']}, just outside the top 3.")
+
+        contrast = summary.get("trajectory_contrast")
+        if contrast:
+            st.warning(
+                f"**{', '.join(contrast)}** is the only finding in the entire portfolio currently "
+                f"getting worse — every one of the top 3 concerns and the opportunity is stable or "
+                f"improving. Severity rank and forward-looking risk are different questions; this is "
+                f"exactly the case where they disagree."
+            )
         st.divider()
 
     st.subheader("Top Opportunity")
@@ -150,6 +166,8 @@ with tab_overview:
             card_cols[1].metric("Severity", f"{f['severity']}")
             st.write(escape_dollar_signs(f["detail"]))
             st.caption(f"Materiality: {escape_dollar_signs(fmt_usd(f['materiality_usd']))}")
+            if f.get("trajectory"):
+                st.badge(f"Trajectory: {f['trajectory']}", color=traj_color.get(f["trajectory"], "gray"))
 
     st.subheader("Narrative")
     current_fingerprint = fingerprint(summary, bool(api_key))

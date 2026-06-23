@@ -1,4 +1,22 @@
-# Prompt version: v1.0.0
+# Prompt version: v1.0.2
+# Change note: v1.0.2 -- added trajectory_contrast. Direct question worth taking seriously: severity
+# (peer z-score of the level) and trajectory (peer z-score of the slope) are different questions, and a
+# finding can rank below the top 3 on severity while still being the only thing in the portfolio that's
+# actually getting worse. Checked against the real data before building this: every one of the current
+# top-3 concerns plus the opportunity is stable or improving; the only worsening finding is a near-miss.
+# Computed once in agent.py (_compute_trajectory_contrast), not derived by the model, and deliberately
+# returns nothing if the contrast doesn't cleanly hold (e.g. if a top-3 finding is ALSO worsening) --
+# this is a real, checked fact about a given week, never a framing forced to make a point.
+#
+# v1.0.1 -- added net_materiality and trend_info. The weekly narrative's data feed was
+# missing week-over-week context (is a concern new or continuing, did anything resolve) and a rolled-up
+# dollar figure entirely -- both were already computed in agent.py but never reached this prompt. The
+# per-LoB narrative's prompt was already richer than this one (category explanations, severity framing)
+# with no good reason for the weekly one to have less to work with.
+#
+# v1.0.0 -- initial version. Pure data-templating prompt -- structures the week's findings for the
+# model to read, makes no independent claims about tone, length, or framing (those all live in
+# system_prompt.txt), so there's nothing here that needs brief-sourcing disclosure.
 
 Week ending: {as_of_week}
 
@@ -11,8 +29,14 @@ figure; "not computable" means no finding this week has one -- never invent a nu
 
 Week-over-week trend -- which concerns are new this week vs. continuing for N weeks running, and
 anything that was a top-3 concern last week but isn't now. This is the direct answer to "what is the
-trend," not just each finding's own internal slope:
+trend" in terms of RANK persistence, not the underlying number's own trajectory (see below for that):
 {trend_info}
+
+Trajectory contrast -- a pre-computed fact, not something to derive yourself: severity measures how
+statistically unusual a finding's LEVEL is; trajectory (given per finding below) measures whether its
+underlying metric is currently getting worse, holding steady, or improving. These are different
+questions, and severity rank does not imply trajectory:
+{trajectory_contrast}
 
 Top concerns (ranked by statistical severity relative to peers -- NOT by business urgency, see system prompt):
 {top_concerns}

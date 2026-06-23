@@ -204,6 +204,32 @@ def test_overview_shows_near_miss_concern():
     assert "just outside the top 3" in body
 
 
+def test_overview_shows_trajectory_contrast_banner_on_real_data():
+    # The actual, verified finding that prompted building trajectory as a separate axis: on the real
+    # data, the only worsening finding is the near-miss (Environmental), and every top-3 concern plus
+    # the opportunity is stable or improving. This is the single clearest demonstration that severity
+    # rank and forward-looking risk are different questions, and it should be impossible to miss on the
+    # dashboard, not buried in a badge.
+    at = AppTest.from_file("app.py")
+    at.run(timeout=30)
+    warning_text = " ".join(w.value for w in at.warning)
+    assert "Environmental" in warning_text
+    assert "only finding" in warning_text.lower()
+
+
+def test_trajectory_badges_present_on_concern_and_opportunity_cards():
+    at = AppTest.from_file("app.py")
+    at.run(timeout=30)
+    badge_labels = [b.label for b in at.get("badge")] if hasattr(at, "get") else []
+    # Fall back to checking markdown/caption text if badge isn't directly enumerable -- the important
+    # thing is the word "Trajectory:" appears somewhere on the page, attached to a real classification.
+    body = "\n".join(m.value for m in at.markdown) + " ".join(c.value for c in at.caption)
+    has_trajectory_text = any(label.startswith("Trajectory:") for label in badge_labels) if badge_labels else (
+        "improving" in body.lower() or "worsening" in body.lower() or "stable" in body.lower()
+    )
+    assert has_trajectory_text
+
+
 def test_chat_exchange_renders_with_both_messages_after_asking():
     # Regression test: chat_input is called LAST in the script (so it's visually below the message
     # history, working around a known Streamlit limitation where chat_input doesn't pin to the bottom

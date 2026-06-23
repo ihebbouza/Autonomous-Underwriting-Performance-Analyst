@@ -66,11 +66,19 @@ class NarrativeWriter:
     def _write_via_llm(self, summary, api_key):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
+        contrast = summary.get("trajectory_contrast")
+        contrast_text = (
+            f"{', '.join(contrast)} is/are the ONLY finding(s) in the portfolio currently worsening -- "
+            f"everything in the top 3 and the opportunity is stable or improving. Worth stating "
+            f"explicitly in the narrative." if contrast else
+            "(no clean contrast this week -- don't force this framing if it doesn't hold)"
+        )
         user_prompt = self.user_prompt_template.format(
             as_of_week=summary["as_of_week"],
             portfolio_kpis=self._format_kpis(summary["portfolio_kpis"]),
             net_materiality=fmt_usd(summary.get("net_materiality_usd")),
             trend_info=self._format_trend(summary.get("trend")),
+            trajectory_contrast=contrast_text,
             top_concerns=self._format_findings(summary["top_concerns"]),
             near_miss_concerns=self._format_findings(summary.get("near_miss_concerns", [])),
             top_opportunities=self._format_findings(summary["top_opportunities"]),
@@ -187,19 +195,19 @@ class NarrativeWriter:
 
     @staticmethod
     def _format_findings(findings):
-        # Richer than a bare detail string: includes what the category actually MEANS and a
-        # plain-language severity band, the same richness the per-LoB narrative's prompt already gets
-        # (see _format_lob_findings) -- there's no good reason the weekly narrative's prompt should
-        # have less to work with than the per-LoB one does.
+        # Richer than a bare detail string: includes what the category actually MEANS, a plain-language
+        # severity band, and now trajectory -- a SEPARATE fact from severity (is the underlying metric
+        # getting worse, holding steady, or improving), never blended into the severity number itself.
         if not findings:
             return "(none)"
         lines = []
         for f in findings:
             explanation = config.CATEGORY_EXPLANATION.get(f["category"], "")
             mat = f", materiality {fmt_usd(f['materiality_usd'])}" if f["materiality_usd"] is not None else ", no materiality figure available"
+            traj = f", trajectory: {f['trajectory']}" if f.get("trajectory") else ", no trajectory (single-event check)"
             lines.append(
                 f"- {f['lob']} [{f['category']} -- means: {explanation}]: {f['detail']} "
-                f"(severity {f['severity']}, {severity_band(f['severity'])}{mat})"
+                f"(severity {f['severity']}, {severity_band(f['severity'])}{mat}{traj})"
             )
         return "\n".join(lines)
 
@@ -261,39 +269,95 @@ class NarrativeWriter:
             verb = "is" if len(trend["resolved_concerns"]) == 1 else "are"
             resolved_line = f"{names} {verb} no longer a top-3 concern this week, having been one last week."
 
-        def trend_prefix(lob, opportunity_entry=None):
+        def trend_opening(lob, category, explanation, opportunity_entry=None):
+            # Deliberately avoids the word "running" here -- several detail strings independently start
+            # with "Running at X% of plan," and an earlier version's trend prefix ("12 weeks running.")
+            # collided with that into a literal "12 weeks running. Running at 58%..." repetition, found
+            # by reading the actual generated text, not by inspecting the code in isolation.
+            #
+            # Kept deliberately tight (an appositive phrase, not a full clause) -- a fuller first attempt
+            # ("has been flagged as a Premium Risk for 12 consecutive weeks now -- explanation.") added
+            # roughly 10 extra words per finding versus the original's "12 weeks running.", which pushed
+            # several real weeks' narratives past the 350-word trim trigger and cost them their net-
+            # dollar-impact and resolved-concern lines as a side effect -- the smoothing fix was
+            # accidentally undoing the previous round's content additions. Caught by checking the actual
+            # untrimmed word count, not assumed from how the sentence read in isolation.
             t = opportunity_entry or trend_by_lob.get(lob)
+            noun = "" if category.lower().endswith(("risk", "opportunity")) else (
+                " opportunity" if opportunity_entry else " concern"
+            )
             if not t:
-                return ""
-            return "New this week. " if t["status"] == "new" else f"{t['weeks_running']} weeks running. "
+                return f"**{lob}**, a {category}{noun} this week: {explanation}."
+            if t["status"] == "new":
+                return f"**{lob}**, newly a {category}{noun} this week: {explanation}."
+            weeks = t["weeks_running"]
+            return f"**{lob}**, a {category}{noun} for {weeks} weeks now: {explanation}."
 
-        # Headline includes the trend prefix directly -- it's the answer to "what is the trend," one of
-        # the brief's three explicit narrative requirements, so it's never treated as droppable filler.
-        # Shown only on a line's first finding (by lob+direction), not repeated if a line has two
-        # separate findings in the same direction this week.
+        # Each finding becomes two connected sentences, not a list of fragments: an opening sentence
+        # that states the category, its plain-language meaning, and how long this has been going on
+        # (the trend -- never dropped, it's the direct answer to "what is the trend"), then a second
+        # sentence with the actual finding detail and its dollar impact woven in as a trailing clause
+        # rather than a separate "Materiality: $X." fragment bolted on afterward.
         ordered = [(f, "concern") for f in concerns] + [(f, "opportunity") for f in opportunities]
         seen_for_trend, headlines, mat_clauses = set(), {}, {}
         for f, direction in ordered:
             key = (f["lob"], direction)
             show_trend = key not in seen_for_trend
             seen_for_trend.add(key)
-            prefix = trend_prefix(f["lob"], trend.get("opportunity") if direction == "opportunity" else None) if show_trend else ""
-            category_line = f"({f['category']} -- {config.CATEGORY_EXPLANATION.get(f['category'], '')})"
-            headlines[id(f)] = f"**{f['lob']}** {category_line}: {prefix}{ensure_period(f['detail'])}"
+            explanation = config.CATEGORY_EXPLANATION.get(f["category"], "")
+            # Named finding_opening, deliberately NOT "opening" -- a real bug, caught by actually
+            # reading the generated output rather than trusting the diff: reusing "opening" here shadowed
+            # the portfolio-level opening paragraph defined above, so the LAST finding processed in this
+            # loop silently replaced the real opening sentence at the top of the whole narrative.
+            finding_opening = (
+                trend_opening(f["lob"], f["category"], explanation,
+                              trend.get("opportunity") if direction == "opportunity" else None)
+                if show_trend else f"**{f['lob']}** also shows:"
+            )
+            detail_text = ensure_period(f["detail"]).rstrip(".")
+            traj_clause = {
+                "worsening": ", and the underlying trend continues to worsen",
+                "improving": ", though the underlying trend is currently improving",
+                "stable": ", with no clear improvement or worsening in the underlying trend",
+            }.get(f.get("trajectory"), "")  # empty for None -- single-event checks have no trend to report
             if f["materiality_usd"] is not None:
-                clause = "The cumulative variance is" if direction == "concern" else "Cumulative variance is"
-                mat_clauses[id(f)] = f" {clause} {fmt_usd(f['materiality_usd'])}."
+                headlines[id(f)] = (
+                    f"{finding_opening} {detail_text}, with a cumulative variance of "
+                    f"{fmt_usd(f['materiality_usd'])}{traj_clause}."
+                )
             else:
-                mat_clauses[id(f)] = ""
+                headlines[id(f)] = f"{finding_opening} {detail_text}{traj_clause}."
+            mat_clauses[id(f)] = ""  # materiality is now woven into the headline sentence itself, never separate
 
         near_miss_line_full, near_miss_line_short = None, None
         if near_misses:
-            names = ", ".join(f"{f['lob']} ({f['category']})" for f in near_misses)
+            # Light-touch, folded into one sentence rather than a separate Recommended Actions bullet --
+            # a near-miss getting its own action item next to the top 3 would read as a 4th concern that
+            # just got demoted, exactly the framing this feature exists to avoid. "Worth a check-in" is
+            # as far as this goes; it's not given the same weight as an actual top-3 action.
+            parts = []
+            for f in near_misses:
+                explanation = config.CATEGORY_EXPLANATION.get(f["category"], "")
+                parts.append(f"{f['lob']} ({f['category']} -- {explanation})")
+            names = ", ".join(parts)
             near_miss_line_full = (
-                f"Close behind the top 3, within a small statistical margin of the cutoff: {names}. "
-                f"Not in the top 3 this week, but close enough to be worth watching, not a miss."
+                f"Just behind the top 3, within a small statistical margin of the cutoff: {names}. "
+                f"Not a top-3 priority this week, but close enough to be worth a check-in with the team."
             )
-            near_miss_line_short = f"Also close behind the top 3: {names}."
+            near_miss_line_short = f"Also close behind the top 3, worth a check-in: {names}."
+
+            # The contrast fact: computed once in agent.py, never derived here -- if it holds, it's the
+            # single clearest demonstration that severity rank and forward-looking risk are different
+            # questions. Appended as its own sentence, only when the data actually supports it.
+            contrast = summary.get("trajectory_contrast")
+            if contrast:
+                contrast_names = ", ".join(contrast)
+                contrast_sentence = (
+                    f" Worth noting: {contrast_names} is the only finding in the entire portfolio "
+                    f"currently getting worse -- every one of the top 3 and the opportunity is stable or improving."
+                )
+                near_miss_line_full += contrast_sentence
+                near_miss_line_short += contrast_sentence
 
         action_map = {
             "Premium Risk": "Review pricing, broker engagement, and underwriting appetite with the team.",
