@@ -1,0 +1,20 @@
+# Prompt version: v1.0.0
+# Change note: initial version. Pure data-templating prompt -- structures the week's findings for the
+# model to read, makes no independent claims about tone, length, or framing (those all live in
+# system_prompt.txt), so there's nothing here that needs brief-sourcing disclosure.
+ 
+Week ending: {as_of_week}
+ 
+Portfolio KPIs:
+{portfolio_kpis}
+ 
+Top concerns (ranked by statistical severity relative to peers -- NOT by business urgency, see system prompt):
+{top_concerns}
+ 
+Close behind the top 3 (within a small statistical margin of the cutoff -- worth a brief mention, not a full write-up):
+{near_miss_concerns}
+ 
+Top opportunity:
+{top_opportunities}
+ 
+Write the weekly narrative now, following all rules in the system prompt.

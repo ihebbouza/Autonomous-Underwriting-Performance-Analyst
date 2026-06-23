@@ -1,0 +1,97 @@
+week_ending,lob,open_quotes_count,open_quotes_gwp_est,avg_days_in_pipeline
+2024-07-07,Cyber,13,9061300.0,26.1
+2024-07-07,Transactional Liability,7,14754600.0,9.8
+2024-07-07,Environmental,7,2177300.0,39.9
+2024-07-07,Political Risk,11,8686900.0,32.5
+2024-07-07,Political Violence,5,94200.0,37.6
+2024-07-07,Financial Institutions,11,3003700.0,31.7
+2024-07-07,Professional Lines,8,101800.0,23.9
+2024-07-07,Excess Casualty,14,2582200.0,13.0
+2024-07-14,Cyber,14,20965600.0,34.1
+2024-07-14,Transactional Liability,8,7765400.0,14.8
+2024-07-14,Environmental,18,3534800.0,11.6
+2024-07-14,Political Risk,13,22229200.0,19.2
+2024-07-14,Political Violence,10,2740200.0,34.9
+2024-07-14,Financial Institutions,6,5443900.0,38.7
+2024-07-14,Professional Lines,13,1907900.0,12.8
+2024-07-14,Excess Casualty,14,7666700.0,16.0
+2024-07-21,Cyber,21,10095100.0,24.6
+2024-07-21,Transactional Liability,21,16877700.0,14.8
+2024-07-21,Environmental,14,1215500.0,20.2
+2024-07-21,Political Risk,9,13077700.0,16.5
+2024-07-21,Political Violence,16,3543400.0,10.6
+2024-07-21,Financial Institutions,22,11931500.0,13.3
+2024-07-21,Professional Lines,5,536400.0,37.1
+2024-07-21,Excess Casualty,17,9056600.0,11.0
+2024-07-28,Cyber,18,2879300.0,24.9
+2024-07-28,Transactional Liability,7,518700.0,40.2
+2024-07-28,Environmental,7,2637600.0,19.1
+2024-07-28,Political Risk,8,2438900.0,17.5
+2024-07-28,Political Violence,14,1012200.0,28.5
+2024-07-28,Financial Institutions,11,1535800.0,12.1
+2024-07-28,Professional Lines,5,1450200.0,16.1
+2024-07-28,Excess Casualty,17,5393800.0,9.6
+2024-08-04,Cyber,13,9553400.0,30.8
+2024-08-04,Transactional Liability,11,11917600.0,9.6
+2024-08-04,Environmental,15,5091300.0,28.5
+2024-08-04,Political Risk,12,18463700.0,38.0
+2024-08-04,Political Violence,21,4672100.0,34.6
+2024-08-04,Financial Institutions,10,7387200.0,28.6
+2024-08-04,Professional Lines,21,5352500.0,27.8
+2024-08-04,Excess Casualty,5,192000.0,30.0
+2024-08-11,Cyber,9,1967800.0,9.7
+2024-08-11,Transactional Liability,22,21989900.0,32.9
+2024-08-11,Environmental,14,5646500.0,14.4
+2024-08-11,Political Risk,15,18933300.0,36.6
+2024-08-11,Political Violence,8,2119200.0,18.9
+2024-08-11,Financial Institutions,15,7937100.0,31.5
+2024-08-11,Professional Lines,6,360400.0,11.4
+2024-08-11,Excess Casualty,17,6793200.0,28.1
+2024-08-18,Cyber,17,9821600.0,31.7
+2024-08-18,Transactional Liability,17,13962800.0,42.0
+2024-08-18,Environmental,16,1283500.0,17.7
+2024-08-18,Political Risk,8,13265800.0,21.6
+2024-08-18,Political Violence,15,3277800.0,30.0
+2024-08-18,Financial Institutions,14,16701700.0,18.2
+2024-08-18,Professional Lines,9,434200.0,40.8
+2024-08-18,Excess Casualty,9,2479700.0,34.0
+2024-08-25,Cyber,5,4178700.0,27.8
+2024-08-25,Transactional Liability,9,7074000.0,27.4
+2024-08-25,Environmental,9,1264100.0,24.1
+2024-08-25,Political Risk,17,3570000.0,43.7
+2024-08-25,Political Violence,5,1619400.0,16.5
+2024-08-25,Financial Institutions,7,4324300.0,19.2
+2024-08-25,Professional Lines,21,6232000.0,12.7
+2024-08-25,Excess Casualty,7,5829600.0,28.8
+2024-09-01,Cyber,9,13038800.0,42.3
+2024-09-01,Transactional Liability,16,37452500.0,27.8
+2024-09-01,Environmental,6,287300.0,38.6
+2024-09-01,Political Risk,5,4191000.0,31.8
+2024-09-01,Political Violence,19,3511200.0,34.6
+2024-09-01,Financial Institutions,11,9719800.0,30.5
+2024-09-01,Professional Lines,9,2661700.0,24.0
+2024-09-01,Excess Casualty,9,7866200.0,41.9
+2024-09-08,Cyber,22,15459800.0,38.9
+2024-09-08,Transactional Liability,5,11621700.0,34.7
+2024-09-08,Environmental,6,943900.0,31.1
+2024-09-08,Political Risk,12,12551000.0,39.4
+2024-09-08,Political Violence,20,5559600.0,18.5
+2024-09-08,Financial Institutions,16,13566700.0,13.5
+2024-09-08,Professional Lines,6,1428800.0,29.3
+2024-09-08,Excess Casualty,16,7900800.0,15.4
+2024-09-15,Cyber,18,25839000.0,17.8
+2024-09-15,Transactional Liability,21,16945700.0,39.1
+2024-09-15,Environmental,17,5859900.0,34.7
+2024-09-15,Political Risk,13,22443700.0,19.2
+2024-09-15,Political Violence,5,1028700.0,36.5
+2024-09-15,Financial Institutions,5,4267800.0,16.6
+2024-09-15,Professional Lines,5,276900.0,39.9
+2024-09-15,Excess Casualty,14,3473400.0,22.6
+2024-09-22,Cyber,17,4542100.0,17.8
+2024-09-22,Transactional Liability,10,777600.0,28.2
+2024-09-22,Environmental,19,2779300.0,39.1
+2024-09-22,Political Risk,15,19944000.0,14.6
+2024-09-22,Political Violence,9,2271200.0,9.8
+2024-09-22,Financial Institutions,17,11589200.0,29.7
+2024-09-22,Professional Lines,19,1342900.0,12.4
+2024-09-22,Excess Casualty,17,15081700.0,36.6
