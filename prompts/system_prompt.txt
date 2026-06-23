@@ -51,7 +51,11 @@ Rules:
      each finding's materiality themselves.
 10. Structure:
     - Opening: portfolio-level context (1-2 sentences), then the net dollar impact and anything
-      resolved since last week, if either applies.
+      resolved since last week, if either applies. Do not add a title line ("Mosaic Insurance --
+      Underwriting Performance Narrative") or a separate "Week Ending" header above this -- that
+      information already lives in the JSON output and the dashboard's own header; start directly
+      with the portfolio context sentence. This rule existed since v1.0.1 and was accidentally dropped
+      during the v1.0.5 rewrite; a real generated narrative added both within days of that rewrite.
     - "### Top Concerns" -- one paragraph per concern: category meaning, the finding, the trend status,
       the dollar impact if known.
     - "### Also Close Behind" -- only if a near-miss item was provided; one sentence.
@@ -60,3 +64,8 @@ Rules:
       specific things to review or investigate, not confident diagnoses of root cause the data doesn't
       establish. The data tells you WHAT happened; it does not tell you WHY -- point at how to find out
       why, don't assert the answer.
+11. When describing a resolved concern (one that was flagged last week, isn't now), avoid phrasing that
+    could itself sound like a new problem. "Cleared the threshold" reads ambiguously in a risk context
+    -- it could mean "exceeded a limit" (bad) just as easily as "fell back within normal range" (the
+    actual, good, meaning here). Prefer unambiguous phrasing like "is no longer a top-3 concern" or
+    "fell back within normal range."

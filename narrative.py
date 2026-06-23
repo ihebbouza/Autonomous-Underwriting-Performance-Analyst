@@ -99,16 +99,36 @@ class NarrativeWriter:
     # reason for this phrasing anywhere in the narrative either way.
     BANNED_NEAR_MISS_PHRASES = ["missed", "excluded", "should have made the top"]
 
+    # Phrasing that's ambiguous when describing a resolved concern -- "cleared the threshold" could
+    # mean "exceeded a limit" (bad) just as easily as the intended "fell back within normal range"
+    # (good). Found in the same real generated narrative that also added the title/header line below.
+    AMBIGUOUS_RESOLVED_PHRASES = ["cleared the threshold"]
+
+    # A title line or "Week Ending" header was explicitly prohibited since v1.0.1, dropped by accident
+    # during a later rewrite with no test catching the gap, and reappeared in real output within days.
+    # Checks whether one of the first few lines STARTS WITH the phrase (a standalone header), not just
+    # contains it anywhere -- "For the week ending 2024-09-22, the portfolio is..." is a normal,
+    # legitimate opening sentence, not a header, and must not be flagged.
+    @staticmethod
+    def _has_title_or_header_line(text):
+        for line in text.splitlines()[:3]:
+            stripped = line.strip().lower()
+            if stripped.startswith("mosaic insurance") or stripped.startswith("week ending"):
+                return True
+        return False
+
     def _enforce_narrative_rules(self, client, user_prompt, text):
         # Simple, single-trigger length check -- not a range. Below config.NARRATIVE_WORD_TRIM_TRIGGER
         # (350) is always fine, however short or long within that; only above it does anything happen,
-        # and even then it's one corrective request, not a cascade. Combined with the banned-phrase
-        # check into one corrective call when either fires, so fixing one can't reintroduce the other.
+        # and even then it's one corrective request, not a cascade. All checks below are combined into
+        # one corrective call when any fires, so fixing one can't reintroduce another.
         word_count = self._count_body_words(text)
         too_long = word_count > config.NARRATIVE_WORD_TRIM_TRIGGER
         found_banned = [p for p in self.BANNED_NEAR_MISS_PHRASES if p in text.lower()]
+        found_ambiguous = [p for p in self.AMBIGUOUS_RESOLVED_PHRASES if p in text.lower()]
+        has_title = self._has_title_or_header_line(text)
 
-        if not too_long and not found_banned:
+        if not (too_long or found_banned or found_ambiguous or has_title):
             return text
 
         issues = []
@@ -126,6 +146,18 @@ class NarrativeWriter:
                 f"Never describe a near-miss as having been missed, excluded, or as something that should have "
                 f"made the top 3 -- it's a real, statistically close call on the same basis everything else was "
                 f"judged by, not a failure."
+            )
+        if found_ambiguous:
+            issues.append(
+                f"It used ambiguous phrasing for a resolved concern: {', '.join(repr(p) for p in found_ambiguous)}. "
+                f"This reads as if a limit was exceeded (bad) when the actual meaning is the opposite (good) -- "
+                f"use unambiguous phrasing like 'is no longer a top-3 concern' or 'fell back within normal range.'"
+            )
+        if has_title:
+            issues.append(
+                "It added a title line or a 'Week Ending' header above the opening paragraph. Remove it -- "
+                "that information already lives in the dashboard and JSON output; start directly with the "
+                "portfolio context sentence."
             )
         try:
             response = client.messages.create(

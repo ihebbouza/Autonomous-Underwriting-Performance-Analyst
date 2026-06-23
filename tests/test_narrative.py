@@ -365,3 +365,71 @@ def test_all_prompt_files_have_version_headers_and_load_clean():
         writer = NarrativeWriter()
         loaded = writer._load_prompt(fname)
         assert not loaded.strip().startswith("#"), f"{fname}: comment header leaked into the loaded prompt body"
+
+
+def test_enforce_narrative_rules_catches_title_line():
+    # Regression test for a real failure: the rule against adding a title/Week-Ending header existed
+    # since v1.0.1, was accidentally dropped from the prompt during a later rewrite with no test
+    # catching the gap, and reappeared in a real generated narrative within days. Now checked
+    # programmatically, the same lesson every other rule in this file already encodes.
+    writer = NarrativeWriter()
+    bad_text = "Mosaic Insurance — Underwriting Performance Narrative\nWeek Ending 2024-09-22\n" + ("word " * 170)
+
+    class FakeResponse:
+        content = [type("Block", (), {"text": "fixed version"})()]
+
+    class FakeMessages:
+        @staticmethod
+        def create(**kwargs):
+            last_msg = kwargs["messages"][-1]["content"]
+            assert "title" in last_msg.lower() or "week ending" in last_msg.lower()
+            return FakeResponse()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    assert result == "fixed version"
+
+
+def test_enforce_narrative_rules_does_not_false_positive_on_week_ending_in_body():
+    # "week ending" can legitimately appear in body text (e.g. "for the week ending 2024-09-22"); only
+    # the first few lines are checked, not the whole text, to avoid flagging a normal sentence.
+    writer = NarrativeWriter()
+    fine_text = "For the week ending 2024-09-22, the portfolio is running at 93.7% of plan. " + ("word " * 170)
+    calls = []
+
+    class FakeClient:
+        class messages:
+            @staticmethod
+            def create(**kwargs):
+                calls.append(kwargs)
+                raise AssertionError("should not be called -- this is legitimate body text, not a header")
+
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", fine_text)
+    assert result == fine_text
+    assert calls == []
+
+
+def test_enforce_narrative_rules_catches_ambiguous_cleared_threshold_phrasing():
+    # Regression test for a real failure: "Financial Institutions...has cleared the threshold and
+    # drops off this week" reads ambiguously -- "cleared the threshold" sounds like exceeding a limit
+    # (bad), not the intended meaning (fell back to normal, good).
+    writer = NarrativeWriter()
+    bad_text = ("word " * 170) + "Financial Institutions has cleared the threshold and drops off this week."
+
+    class FakeResponse:
+        content = [type("Block", (), {"text": "fixed version"})()]
+
+    class FakeMessages:
+        @staticmethod
+        def create(**kwargs):
+            last_msg = kwargs["messages"][-1]["content"]
+            assert "cleared the threshold" in last_msg.lower()
+            return FakeResponse()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    assert result == "fixed version"
