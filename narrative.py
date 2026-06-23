@@ -4,6 +4,14 @@ offline template if the API is unavailable. The fallback is a real narrative, no
 earlier draft of this project shipped a bracketed TODO-style line in the offline path, which is exactly
 the kind of thing an evaluator notices first. Fixed here by writing the template to actually use the
 finding data, the same way the LLM path does.
+
+Length policy is deliberately simple (see config.py): a 250-300 word soft target, trimming only above
+350, a 400-word hard cap aimed for once, not chased with retries. An earlier version of this file had a
+much more elaborate trim cascade (materiality clauses dropped one at a time, near-miss text shortened
+in three stages, padding added back for short weeks) -- it worked, but it was judged to be solving a
+problem more complex than the brief actually has, at the cost of attention that belonged on the
+findings themselves. Findings always win over length here: nothing below ever removes a finding, a
+number, or the trend status to make room.
 """
 import time
 from pathlib import Path
@@ -51,12 +59,18 @@ class NarrativeWriter:
                 print(f"[NarrativeWriter] LLM call failed for {lob}, using template: {exc}")
         return self._write_lob_via_template(lob, lob_findings, lob_kpis), "template"
 
+    # ------------------------------------------------------------------
+    # Weekly narrative -- LLM path
+    # ------------------------------------------------------------------
+
     def _write_via_llm(self, summary, api_key):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         user_prompt = self.user_prompt_template.format(
             as_of_week=summary["as_of_week"],
             portfolio_kpis=self._format_kpis(summary["portfolio_kpis"]),
+            net_materiality=fmt_usd(summary.get("net_materiality_usd")),
+            trend_info=self._format_trend(summary.get("trend")),
             top_concerns=self._format_findings(summary["top_concerns"]),
             near_miss_concerns=self._format_findings(summary.get("near_miss_concerns", [])),
             top_opportunities=self._format_findings(summary["top_opportunities"]),
@@ -81,30 +95,30 @@ class NarrativeWriter:
     # Words that frame a near-miss as a failure rather than a close, statistically valid call. Found
     # in a real LLM-generated narrative ("Environmental just missed the cutoff") despite the system
     # prompt explicitly prohibiting this framing -- stating the rule once was not reliably enough on
-    # its own, the same lesson the word-count check below already encodes. Checked unconditionally,
-    # not just when a near-miss exists, since there's no legitimate reason for this phrasing anywhere
-    # in the narrative either way.
+    # its own. Checked unconditionally, not just when a near-miss exists, since there's no legitimate
+    # reason for this phrasing anywhere in the narrative either way.
     BANNED_NEAR_MISS_PHRASES = ["missed", "excluded", "should have made the top"]
 
     def _enforce_narrative_rules(self, client, user_prompt, text):
-        # The length rule is one of the brief's four explicit grading criteria for this prompt
-        # specifically -- stating it once in the system prompt was not reliably enough on its own
-        # (a real LLM-generated narrative came back at 275 words against a 150-200 target). Both
-        # checks below are combined into one corrective pass, not two sequential ones, so fixing one
-        # issue can't accidentally reintroduce the other (e.g., a word-count rewrite restating the
-        # near-miss in banned language again, or vice versa).
+        # Simple, single-trigger length check -- not a range. Below config.NARRATIVE_WORD_TRIM_TRIGGER
+        # (350) is always fine, however short or long within that; only above it does anything happen,
+        # and even then it's one corrective request, not a cascade. Combined with the banned-phrase
+        # check into one corrective call when either fires, so fixing one can't reintroduce the other.
         word_count = self._count_body_words(text)
-        word_count_ok = config.NARRATIVE_WORD_MIN <= word_count <= config.NARRATIVE_WORD_MAX
+        too_long = word_count > config.NARRATIVE_WORD_TRIM_TRIGGER
         found_banned = [p for p in self.BANNED_NEAR_MISS_PHRASES if p in text.lower()]
 
-        if word_count_ok and not found_banned:
+        if not too_long and not found_banned:
             return text
 
         issues = []
-        if not word_count_ok:
+        if too_long:
             issues.append(
-                f"It was {word_count} words in the body (excluding headers), outside the required "
-                f"{config.NARRATIVE_WORD_MIN}-{config.NARRATIVE_WORD_MAX} word range."
+                f"It was {word_count} words, over the {config.NARRATIVE_WORD_TRIM_TRIGGER}-word limit. "
+                f"Tighten the prose -- shorter sentences, less connective language -- but do not remove "
+                f"any finding, any number, or any trend status (new/N weeks running/resolved). Aim for "
+                f"{config.NARRATIVE_WORD_TARGET_MIN}-{config.NARRATIVE_WORD_TARGET_MAX} words if you can, "
+                f"but never exceed {config.NARRATIVE_WORD_HARD_CAP}."
             )
         if found_banned:
             issues.append(
@@ -121,10 +135,7 @@ class NarrativeWriter:
                 messages=[
                     {"role": "user", "content": user_prompt},
                     {"role": "assistant", "content": text},
-                    {"role": "user", "content": (
-                        "Rewrite it to fix the following, keeping every number and the same structure "
-                        "otherwise: " + " ".join(issues)
-                    )},
+                    {"role": "user", "content": "Rewrite it to fix the following: " + " ".join(issues)},
                 ],
             )
             return response.content[0].text
@@ -144,13 +155,48 @@ class NarrativeWriter:
 
     @staticmethod
     def _format_findings(findings):
+        # Richer than a bare detail string: includes what the category actually MEANS and a
+        # plain-language severity band, the same richness the per-LoB narrative's prompt already gets
+        # (see _format_lob_findings) -- there's no good reason the weekly narrative's prompt should
+        # have less to work with than the per-LoB one does.
         if not findings:
             return "(none)"
         lines = []
         for f in findings:
-            mat = f", materiality ${f['materiality_usd']:,.0f}" if f["materiality_usd"] is not None else ""
-            lines.append(f"- {f['lob']} [{f['category']}]: {f['detail']} (severity {f['severity']}{mat})")
+            explanation = config.CATEGORY_EXPLANATION.get(f["category"], "")
+            mat = f", materiality {fmt_usd(f['materiality_usd'])}" if f["materiality_usd"] is not None else ", no materiality figure available"
+            lines.append(
+                f"- {f['lob']} [{f['category']} -- means: {explanation}]: {f['detail']} "
+                f"(severity {f['severity']}, {severity_band(f['severity'])}{mat})"
+            )
         return "\n".join(lines)
+
+    @staticmethod
+    def _format_trend(trend):
+        if not trend:
+            return "(no trend data available)"
+        lines = []
+        for t in trend.get("concerns", []):
+            if t["status"] == "new":
+                lines.append(f"- {t['lob']}: NEW as a top-3 concern this week (was not one last week)")
+            else:
+                lines.append(f"- {t['lob']}: continuing, {t['weeks_running']} weeks running as a top-3 concern")
+        if trend.get("resolved_concerns"):
+            lines.append(
+                f"- Resolved since last week (was a top-3 concern then, isn't now): "
+                f"{', '.join(trend['resolved_concerns'])}"
+            )
+        opp = trend.get("opportunity")
+        if opp:
+            if opp["status"] == "new":
+                lines.append(f"- Opportunity {opp['lob']}: NEW this week")
+            else:
+                lines.append(f"- Opportunity {opp['lob']}: continuing, {opp['weeks_running']} weeks running")
+        return "\n".join(lines) if lines else "(this is the first week in the dataset -- no prior week to compare against)"
+
+    # ------------------------------------------------------------------
+    # Weekly narrative -- offline template path
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _write_via_template(summary):
@@ -158,18 +204,56 @@ class NarrativeWriter:
         concerns = summary["top_concerns"]
         opportunities = summary["top_opportunities"]
         near_misses = summary.get("near_miss_concerns", [])
-        # near_misses must count as "flagged" here too -- they have a real finding, just one that
-        # didn't clear the top-3 cutoff. Without this, a near-miss line would be wrongly counted as
-        # "clean" in the opening sentence and could even appear in the clean-lines padding section.
+        trend = summary.get("trend") or {"concerns": [], "resolved_concerns": [], "opportunity": None}
+        net_materiality = summary.get("net_materiality_usd")
+        trend_by_lob = {t["lob"]: t for t in trend.get("concerns", [])}
+
         flagged_lobs = {f["lob"] for f in concerns + opportunities + near_misses}
-        clean_lobs = [lob for lob in config.LINES_OF_BUSINESS if lob not in flagged_lobs]
+        clean_count = len(config.LINES_OF_BUSINESS) - len(flagged_lobs)
 
         opening = (
             f"For the week ending {summary['as_of_week']}, the portfolio is running at "
             f"{kpis.get('ytd_gwp_vs_plan_pct', 'N/A')}% of YTD plan, with a portfolio hit rate of "
             f"{kpis.get('portfolio_hit_rate_pct', 'N/A')}%. Of the portfolio's {len(config.LINES_OF_BUSINESS)} "
-            f"lines, {len(clean_lobs)} showed no flagged findings this week."
+            f"lines, {clean_count} showed no flagged findings this week."
         )
+
+        net_materiality_line = (
+            f"Net dollar impact across this week's flagged findings: {fmt_usd(net_materiality)}."
+            if net_materiality is not None else None
+        )
+
+        resolved_line = None
+        if trend.get("resolved_concerns"):
+            names = ", ".join(trend["resolved_concerns"])
+            verb = "is" if len(trend["resolved_concerns"]) == 1 else "are"
+            resolved_line = f"{names} {verb} no longer a top-3 concern this week, having been one last week."
+
+        def trend_prefix(lob, opportunity_entry=None):
+            t = opportunity_entry or trend_by_lob.get(lob)
+            if not t:
+                return ""
+            return "New this week. " if t["status"] == "new" else f"{t['weeks_running']} weeks running. "
+
+        # Headline includes the trend prefix directly -- it's the answer to "what is the trend," one of
+        # the brief's three explicit narrative requirements, so it's never treated as droppable filler.
+        # Shown only on a line's first finding (by lob+direction), not repeated if a line has two
+        # separate findings in the same direction this week.
+        ordered = [(f, "concern") for f in concerns] + [(f, "opportunity") for f in opportunities]
+        seen_for_trend, headlines, mat_clauses = set(), {}, {}
+        for f, direction in ordered:
+            key = (f["lob"], direction)
+            show_trend = key not in seen_for_trend
+            seen_for_trend.add(key)
+            prefix = trend_prefix(f["lob"], trend.get("opportunity") if direction == "opportunity" else None) if show_trend else ""
+            category_line = f"({f['category']} -- {config.CATEGORY_EXPLANATION.get(f['category'], '')})"
+            headlines[id(f)] = f"**{f['lob']}** {category_line}: {prefix}{ensure_period(f['detail'])}"
+            if f["materiality_usd"] is not None:
+                clause = "The cumulative variance is" if direction == "concern" else "Cumulative variance is"
+                mat_clauses[id(f)] = f" {clause} {fmt_usd(f['materiality_usd'])}."
+            else:
+                mat_clauses[id(f)] = ""
+
         near_miss_line_full, near_miss_line_short = None, None
         if near_misses:
             names = ", ".join(f"{f['lob']} ({f['category']})" for f in near_misses)
@@ -179,22 +263,6 @@ class NarrativeWriter:
             )
             near_miss_line_short = f"Also close behind the top 3: {names}."
 
-        # Each finding's headline sentence and its materiality clause are kept separate so the clause
-        # can be selectively dropped if the narrative runs long. concerns/opportunities are already
-        # ranked by severity, so "ordered" below (concerns first, then opportunities, each in their
-        # given order) means the lowest-severity materiality clause is always the first one dropped --
-        # the least informative content goes first, not an arbitrary one.
-        ordered = [(f, "concern") for f in concerns] + [(f, "opportunity") for f in opportunities]
-        headlines = {
-            id(f): f"**{f['lob']}** ({f['category']}): {ensure_period(f['detail'])}"
-            for f, _ in ordered
-        }
-        mat_clauses = {
-            id(f): (f" The cumulative variance is {fmt_usd(f['materiality_usd'])}." if direction == "concern"
-                    else f" Cumulative variance is {fmt_usd(f['materiality_usd'])}.")
-            if f["materiality_usd"] is not None else ""
-            for f, direction in ordered
-        }
         action_map = {
             "Premium Risk": "Review pricing, broker engagement, and underwriting appetite with the team.",
             "Conversion Risk": "Review quotes, broker feedback, and pricing for this line.",
@@ -208,77 +276,52 @@ class NarrativeWriter:
             for f, _ in ordered
         ]
 
-        def assemble(n_mats_kept, padding_lobs=None, include_dollar_context=False, near_miss_mode="full"):
-            kept_ids = {id(f) for f, _ in ordered[:n_mats_kept]}
-            lines = [opening, "", "### Top Concerns"]
+        def assemble(near_miss_full=True):
+            lines = [opening]
+            if net_materiality_line:
+                lines.append(net_materiality_line)
+            if resolved_line:
+                lines.append(resolved_line)
+            lines += ["", "### Top Concerns"]
             for f in concerns:
-                lines.append(headlines[id(f)] + (mat_clauses[id(f)] if id(f) in kept_ids else ""))
+                lines.append(headlines[id(f)] + mat_clauses[id(f)])
             if not concerns:
                 lines.append("No concerns cleared this week's detection thresholds.")
-            if near_miss_mode == "full" and near_miss_line_full:
-                lines += ["", "### Also Close Behind", near_miss_line_full]
-            elif near_miss_mode == "short" and near_miss_line_short:
-                lines += ["", "### Also Close Behind", near_miss_line_short]
+            if near_misses:
+                lines += ["", "### Also Close Behind", near_miss_line_full if near_miss_full else near_miss_line_short]
             lines += ["", "### Opportunity"]
             for f in opportunities:
-                lines.append(headlines[id(f)] + (mat_clauses[id(f)] if id(f) in kept_ids else ""))
+                lines.append(headlines[id(f)] + mat_clauses[id(f)])
             if not opportunities:
                 lines.append("No opportunity cleared this week's detection thresholds.")
-            if padding_lobs:
-                lines += ["", "### Also Clean This Week",
-                          f"No findings this week for: {', '.join(padding_lobs)}."]
-            if include_dollar_context:
-                lines += ["", "### Portfolio Context",
-                          f"In dollar terms, this week's GWP came in at "
-                          f"${kpis.get('gwp_actual_this_week', 0):,.0f} against a "
-                          f"${kpis.get('gwp_plan_this_week', 0):,.0f} plan, with year-to-date GWP at "
-                          f"${kpis.get('ytd_gwp_actual', 0):,.0f} against a "
-                          f"${kpis.get('ytd_gwp_plan', 0):,.0f} annual plan."]
             lines += ["", "### Recommended Actions"] + action_lines
             return "\n".join(lines)
 
-        text = assemble(n_mats_kept=len(ordered), near_miss_mode="full")
+        text = assemble(near_miss_full=True)
         word_count = NarrativeWriter._count_body_words(text)
 
-        # Too long: trim in priority order, cheapest/least-essential first, re-checking after each
-        # single step rather than exhausting one category before trying the next. The earlier version
-        # of this logic dropped ALL materiality clauses before ever trying to shorten the near-miss
-        # mention, which meant a real dollar figure could be sacrificed just to make room for a
-        # footnote -- found by actually inspecting the output, not by assumption. The order below: drop
-        # the near-miss's explanatory sentence first (cheap, least essential), then materiality clauses
-        # one at a time lowest-severity first, re-trying the short near-miss form after each one so it
-        # survives as long as genuinely possible -- and only sacrifice it entirely once every
-        # materiality clause is already gone and it's still too long.
-        n_kept = len(ordered)
-        near_miss_mode = "full"
-        if word_count > config.NARRATIVE_WORD_MAX and near_miss_line_full:
-            near_miss_mode = "short"
-            text = assemble(n_mats_kept=n_kept, near_miss_mode=near_miss_mode)
+        # Simple, three-step trim, only if genuinely needed (above 350 words) -- and only ever touching
+        # synthesis/commentary lines, never a finding, a number, or the trend status. Each step is
+        # independent, not a recomputed cascade: try all three in a fixed order, stop as soon as it's
+        # back in range. If still over 350 after all three (unlikely given the data is bounded), ship it
+        # as-is rather than build more machinery to chase the last few words.
+        if word_count > config.NARRATIVE_WORD_TRIM_TRIGGER:
+            net_materiality_line = None
+            text = assemble(near_miss_full=True)
             word_count = NarrativeWriter._count_body_words(text)
-        while word_count > config.NARRATIVE_WORD_MAX and n_kept > 0:
-            n_kept -= 1
-            text = assemble(n_mats_kept=n_kept, near_miss_mode=near_miss_mode)
+        if word_count > config.NARRATIVE_WORD_TRIM_TRIGGER:
+            resolved_line = None
+            text = assemble(near_miss_full=True)
             word_count = NarrativeWriter._count_body_words(text)
-        if word_count > config.NARRATIVE_WORD_MAX and near_miss_mode == "short":
-            near_miss_mode = "none"
-            text = assemble(n_mats_kept=n_kept, near_miss_mode=near_miss_mode)
+        if word_count > config.NARRATIVE_WORD_TRIM_TRIGGER and near_miss_line_full:
+            text = assemble(near_miss_full=False)
             word_count = NarrativeWriter._count_body_words(text)
-
-        # Too short: add real, genuine context -- which lines are clean, then actual dollar figures not
-        # mentioned elsewhere -- until in range or there's nothing genuine left to add. Never invents a
-        # number; both additions use figures already present in portfolio_kpis.
-        if word_count < config.NARRATIVE_WORD_MIN:
-            for n in range(0, len(clean_lobs) + 1):
-                candidate = assemble(n_mats_kept=n_kept, near_miss_mode=near_miss_mode, padding_lobs=clean_lobs[:n] if n else None)
-                word_count = NarrativeWriter._count_body_words(candidate)
-                text = candidate
-                if word_count >= config.NARRATIVE_WORD_MIN:
-                    break
-            if word_count < config.NARRATIVE_WORD_MIN:
-                text = assemble(n_mats_kept=n_kept, near_miss_mode=near_miss_mode, padding_lobs=clean_lobs or None, include_dollar_context=True)
-                word_count = NarrativeWriter._count_body_words(text)
 
         return text
+
+    # ------------------------------------------------------------------
+    # Per-LoB drill-down narrative
+    # ------------------------------------------------------------------
 
     def _write_lob_via_llm(self, lob, lob_findings, lob_kpis, api_key):
         import anthropic

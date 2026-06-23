@@ -121,7 +121,15 @@ CATEGORY_EXPLANATION = {
 # Prompt / narrative config
 LLM_MODEL = "claude-sonnet-4-6"
 LLM_MAX_RETRIES = 2
-LLM_MAX_TOKENS = 600
-NARRATIVE_WORD_MIN = 150
-NARRATIVE_WORD_MAX = 200
+LLM_MAX_TOKENS = 800  # bumped from 600 -- a 400-word hard cap plus headers/structure needs more headroom
+# Narrative length policy -- deliberately simple, on direct instruction after an earlier version's
+# trim logic (drop materiality clause-by-clause, near-miss full/short/none, padding for short weeks)
+# was judged over-engineered relative to its actual value. Findings come first: length is secondary,
+# and trimming should never remove a finding or a number, only tighten prose. 250-300 is a soft target,
+# not enforced; trimming only activates above 350; 400 is a hard ceiling aimed for with one corrective
+# pass, not a guarantee chased with retries.
+NARRATIVE_WORD_TARGET_MIN = 250
+NARRATIVE_WORD_TARGET_MAX = 300
+NARRATIVE_WORD_TRIM_TRIGGER = 350
+NARRATIVE_WORD_HARD_CAP = 400
 PROMPT_DIR = "prompts"

@@ -161,17 +161,39 @@ is a smaller loss than losing the only mention of a real, named finding entirely
 Two narratives exist, both following the same LLM-with-retry-and-template-fallback pattern:
 
 **The weekly narrative** (`NarrativeWriter.write`): the full CUO pack — portfolio context, top 3
-concerns, top opportunity, recommended actions. 150-200 words is one of the brief's four explicit
-grading criteria for this specific prompt, so it's enforced twice, not just stated once:
-- **LLM path:** after the model responds, word count is checked; if out of range, one corrective
-  follow-up call asks for a rewrite that keeps every number. A real LLM response once came back at 275
-  words against the 150-200 target — stating the rule in the prompt alone wasn't reliably enough.
-- **Template path:** there's no LLM available to "rewrite" a deterministic template, so enforcement is a
-  rule-based trim/pad pass. Too long → drop materiality clauses starting with the lowest-severity
-  finding. Too short → add genuinely real content (which lines are clean, then actual dollar GWP figures
-  not mentioned elsewhere) rather than filler. Verified in range across all 12 weeks in the dataset, not
-  just the latest one — an earlier version silently ranged from 107 to 201 words depending on how many
-  findings existed that week, which only surfaced by actually checking every week instead of one snapshot.
+concerns, top opportunity, recommended actions. The length policy is deliberately simple, on direct
+instruction after an earlier version's trim logic (materiality clauses dropped one at a time, near-miss
+text shortened in three stages, padding added back for short weeks) was judged more complex than its
+actual value justified: 250-300 words is a soft target, trimming only activates above 350, and 400 is a
+hard ceiling aimed for once, not chased with retries. Findings always outrank length — nothing in either
+path ever removes a finding, a number, or a trend status to get shorter.
+- **LLM path:** checked for two things after the model responds — length over the 350-word trigger, and
+  banned near-miss framing ("missed," "excluded") — combined into one corrective follow-up if either
+  fires, so fixing one can't reintroduce the other.
+- **Template path:** a simple, three-step trim, tried in a fixed order, only above 350 words: drop the
+  net-materiality rollup line, then the resolved-since-last-week line, then shorten the near-miss
+  mention to its short form. Never touches a finding's own content or materiality. If still over 350
+  after all three (rare, given the data is bounded), it ships as-is rather than chasing the last words
+  with more machinery.
+
+**What actually makes this a narrative and not a restatement of the dashboard's cards** — the original
+version of this file reused each finding's `detail` string almost verbatim, which read as a
+reformatted duplicate of the cards already shown above it. Two additions, both computed from data the
+system already had and never rolled up before, in `AnalystAgent.analyze()`:
+- **Net dollar impact** (`_compute_net_materiality`): the sum of every known materiality figure across
+  the top concerns and the opportunity, stated once, early — instead of leaving a CUO to add up each
+  finding's number themselves.
+- **Week-over-week trend** (`_compute_trend`): is each top concern *new* this week, or has it been in
+  the top 3 for N consecutive weeks running; did anything resolve since last week's report. This is the
+  one thing a narrative can do that a snapshot-based card view genuinely cannot — checked against the
+  real data before being treated as a real feature, not a theoretical one: the third concern slot has
+  rotated through three different lines over the last three weeks while the top two held steady, which
+  is the kind of fact a CUO who read last Monday's pack would actually want surfaced.
+
+The findings themselves are also fed more context than before: `_format_findings` (used in the LLM
+prompt) now includes each category's plain-language explanation and each severity's plain-language band
+— the same richness the per-LoB narrative's prompt already had, with no good reason the weekly one
+should have less to work with.
 
 **The per-LoB narrative** (`NarrativeWriter.write_lob_narrative`): a focused 2-4 sentence note for the
 dashboard's drill-down view, generated automatically when a line is selected (no button — this is meant
