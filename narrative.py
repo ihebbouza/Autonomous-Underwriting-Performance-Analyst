@@ -83,6 +83,7 @@ class NarrativeWriter:
             near_miss_concerns=self._format_findings(summary.get("near_miss_concerns", [])),
             top_opportunities=self._format_findings(summary["top_opportunities"]),
         )
+        has_findings = bool(summary["top_concerns"] or summary["top_opportunities"] or summary.get("near_miss_concerns"))
         last_exc = None
         for attempt in range(config.LLM_MAX_RETRIES + 1):
             try:
@@ -93,7 +94,7 @@ class NarrativeWriter:
                     messages=[{"role": "user", "content": user_prompt}],
                 )
                 text = response.content[0].text
-                return self._enforce_narrative_rules(client, user_prompt, text)
+                return self._enforce_narrative_rules(client, user_prompt, text, has_findings=has_findings)
             except Exception as exc:
                 last_exc = exc
                 if attempt < config.LLM_MAX_RETRIES:
@@ -125,7 +126,29 @@ class NarrativeWriter:
                 return True
         return False
 
-    def _enforce_narrative_rules(self, client, user_prompt, text):
+    # Rule 6 requires a plain-language severity band in the prose, not just the raw number. A real
+    # generated narrative omitted severity entirely -- not the number, not the band, for any of the 4
+    # findings -- while correctly including trajectory for every one of them. The likely cause: once
+    # trajectory was added as a second descriptive axis per finding, the model treated severity and
+    # trajectory as interchangeable framing devices and picked one instead of including both, which the
+    # rules require. Checked simply: does at least one of the three band phrases appear anywhere in the
+    # text. This catches the observed failure mode (complete omission across every finding) without
+    # requiring a more complex per-finding positional check.
+    SEVERITY_BAND_PHRASES = ["high-priority signal", "moderate signal", "minor signal"]
+
+    @staticmethod
+    def _missing_severity_band(text, has_findings=True):
+        # A legitimate all-clean week (zero concerns, zero opportunities, zero near-misses) correctly
+        # produces a narrative with NO severity-band language at all -- there's nothing to attach one
+        # to. Without has_findings, this check would flag that legitimate narrative as defective and
+        # trigger a pointless corrective call asking the model to "add severity language" to a week that
+        # has none to add. Found by directly testing the all-clean-week case, not assumed safe because
+        # every week in the real dataset happens to have at least one finding.
+        if not has_findings:
+            return False
+        return not any(p in text.lower() for p in NarrativeWriter.SEVERITY_BAND_PHRASES)
+
+    def _enforce_narrative_rules(self, client, user_prompt, text, has_findings=True):
         # Simple, single-trigger length check -- not a range. Below config.NARRATIVE_WORD_TRIM_TRIGGER
         # (350) is always fine, however short or long within that; only above it does anything happen,
         # and even then it's one corrective request, not a cascade. All checks below are combined into
@@ -135,8 +158,9 @@ class NarrativeWriter:
         found_banned = [p for p in self.BANNED_NEAR_MISS_PHRASES if p in text.lower()]
         found_ambiguous = [p for p in self.AMBIGUOUS_RESOLVED_PHRASES if p in text.lower()]
         has_title = self._has_title_or_header_line(text)
+        missing_severity = self._missing_severity_band(text, has_findings=has_findings)
 
-        if not (too_long or found_banned or found_ambiguous or has_title):
+        if not (too_long or found_banned or found_ambiguous or has_title or missing_severity):
             return text
 
         issues = []
@@ -166,6 +190,14 @@ class NarrativeWriter:
                 "It added a title line or a 'Week Ending' header above the opening paragraph. Remove it -- "
                 "that information already lives in the dashboard and JSON output; start directly with the "
                 "portfolio context sentence."
+            )
+        if missing_severity:
+            issues.append(
+                "It never used a severity band (e.g. 'a high-priority signal', 'a moderate signal', 'a minor "
+                "signal') for any finding -- only trajectory. Both are required, and they are different facts: "
+                "severity is how statistically unusual the LEVEL is; trajectory is which direction the number "
+                "is currently moving. Add the severity band back into each finding's own sentence without "
+                "removing the trajectory language already there."
             )
         try:
             response = client.messages.create(

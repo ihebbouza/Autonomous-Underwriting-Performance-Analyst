@@ -167,7 +167,7 @@ def test_trend_status_and_every_finding_survive_even_when_trimming_is_needed():
         assert f"${100000 + i * 10000:,}" in text
     assert "Growth Line" in text and "$80,000" in text
     assert "Close Line" in text  # the near-miss mention itself survives, just shortened
-    assert text.count("New this week") == 6  # 5 concerns + 1 opportunity, every trend status intact
+    assert text.count("newly a") == 6  # 5 concerns + 1 opportunity, every trend status intact
 
 
 def test_near_miss_does_not_sacrifice_materiality_when_avoidable():
@@ -235,7 +235,7 @@ def test_enforce_narrative_rules_accepts_clean_text_without_extra_call(monkeypat
                 calls.append(kwargs)
                 raise AssertionError("should not be called when text already passes both checks")
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", clean_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", clean_text, has_findings=False)
     assert result == clean_text
     assert calls == []
 
@@ -259,7 +259,7 @@ def test_enforce_narrative_rules_requests_a_rewrite_when_too_long(monkeypatch):
     class FakeClient:
         messages = FakeMessages()
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", too_long_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", too_long_text, has_findings=False)
     assert result == shortened_text
 
 
@@ -285,7 +285,7 @@ def test_enforce_narrative_rules_catches_missed_framing(monkeypatch):
     class FakeClient:
         messages = FakeMessages()
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text, has_findings=False)
     assert result == fixed_text
 
 
@@ -306,7 +306,7 @@ def test_enforce_narrative_rules_catches_excluded_framing():
     class FakeClient:
         messages = FakeMessages()
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text, has_findings=False)
     assert result == "fixed version"
 
 
@@ -331,7 +331,7 @@ def test_enforce_narrative_rules_combines_both_issues_in_one_call():
     class FakeClient:
         messages = FakeMessages()
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text, has_findings=False)
     assert result == "fixed version"
 
 
@@ -347,7 +347,7 @@ def test_enforce_narrative_rules_falls_back_to_original_if_correction_call_fails
     class FakeClient:
         messages = FakeMessages()
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text, has_findings=False)
     assert result == bad_text  # ships the flawed-but-real narrative rather than losing it entirely
 
 
@@ -388,7 +388,7 @@ def test_enforce_narrative_rules_catches_title_line():
     class FakeClient:
         messages = FakeMessages()
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text, has_findings=False)
     assert result == "fixed version"
 
 
@@ -406,7 +406,7 @@ def test_enforce_narrative_rules_does_not_false_positive_on_week_ending_in_body(
                 calls.append(kwargs)
                 raise AssertionError("should not be called -- this is legitimate body text, not a header")
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", fine_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", fine_text, has_findings=False)
     assert result == fine_text
     assert calls == []
 
@@ -431,5 +431,50 @@ def test_enforce_narrative_rules_catches_ambiguous_cleared_threshold_phrasing():
     class FakeClient:
         messages = FakeMessages()
 
-    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text)
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text, has_findings=False)
     assert result == "fixed version"
+
+
+def test_enforce_narrative_rules_catches_missing_severity_band_when_findings_exist():
+    writer = NarrativeWriter()
+    bad_text = ("word " * 170) + "Excess Casualty is worsening, a structural shortfall."
+
+    class FakeResponse:
+        content = [type("Block", (), {"text": "fixed version"})()]
+
+    class FakeMessages:
+        @staticmethod
+        def create(**kwargs):
+            last_msg = kwargs["messages"][-1]["content"]
+            assert "severity" in last_msg.lower()
+            return FakeResponse()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", bad_text, has_findings=True)
+    assert result == "fixed version"
+
+
+def test_enforce_narrative_rules_does_not_flag_missing_severity_on_a_legitimate_all_clean_week():
+    # Regression test for a real bug found by directly testing the all-clean-week case: a week with
+    # zero concerns, zero opportunities, and zero near-misses correctly has no severity-band language
+    # at all -- there's nothing to attach one to. Without has_findings=False, this would incorrectly
+    # trigger a corrective call asking the model to add severity language to a week that has none to add.
+    writer = NarrativeWriter()
+    clean_week_text = (
+        "For the week ending 2024-01-01, the portfolio is running at 100.0% of plan. "
+        "No concerns cleared this week's detection thresholds. No opportunity cleared this week's detection thresholds."
+    )
+    calls = []
+
+    class FakeClient:
+        class messages:
+            @staticmethod
+            def create(**kwargs):
+                calls.append(kwargs)
+                raise AssertionError("should not be called -- this is a legitimate all-clean week")
+
+    result = writer._enforce_narrative_rules(FakeClient(), "user prompt", clean_week_text, has_findings=False)
+    assert result == clean_week_text
+    assert calls == []

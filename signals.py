@@ -132,17 +132,27 @@ class SignalDetector:
         return pd.Series(slopes)
 
     @staticmethod
-    def _trajectory(slope_series, lob, deteriorating_sign):
-        # deteriorating_sign flips the raw slope's peer z-score so that, regardless of which literal
-        # direction is bad for THIS metric (a falling ratio is bad for GWP; a climbing one is bad for
-        # loss ratio), a positive result always means "worsening relative to peers" and a negative
-        # result always means "improving relative to peers" -- one consistent meaning across all checks.
-        z = SignalDetector._peer_z(slope_series, lob) * deteriorating_sign
-        if z > config.TRAJECTORY_STABLE_MARGIN:
-            return "worsening", round(z, 2)
-        if z < -config.TRAJECTORY_STABLE_MARGIN:
-            return "improving", round(z, 2)
-        return "stable", round(z, 2)
+    def _trajectory(slope_series_primary, slope_series_secondary, lob, deteriorating_sign):
+        # A single window's slope can be genuinely noise-driven, not a real signal -- found by directly
+        # testing whether the classification holds across nearby window choices, not assumed from one
+        # number. Excess Casualty's GWP trajectory flips between worsening/stable/improving depending on
+        # whether the window is 4, 5, 6, 7, or 8 weeks (its underlying slope is close to flat, ~0.4
+        # points/week, so noise dominates which way a single window happens to lean); Environmental's
+        # loss-ratio trajectory stays "worsening" across every one of those windows (its slope, ~2.7
+        # points/week, is large enough that noise doesn't flip it). Rather than trust whichever window
+        # happens to be the default, this requires the primary window AND a second, shorter window to
+        # actually AGREE on direction before reporting worsening/improving. Disagreement is itself the
+        # honest answer ("stable" -- not enough signal to call a direction confidently), not a coin-flip
+        # dressed up as a fact.
+        z1 = SignalDetector._peer_z(slope_series_primary, lob) * deteriorating_sign
+        z2 = SignalDetector._peer_z(slope_series_secondary, lob) * deteriorating_sign
+        label1 = "worsening" if z1 > config.TRAJECTORY_STABLE_MARGIN else (
+            "improving" if z1 < -config.TRAJECTORY_STABLE_MARGIN else "stable")
+        label2 = "worsening" if z2 > config.TRAJECTORY_STABLE_MARGIN else (
+            "improving" if z2 < -config.TRAJECTORY_STABLE_MARGIN else "stable")
+        if label1 == label2 and label1 != "stable":
+            return label1, round(z1, 2)
+        return "stable", round(z1, 2)
 
     # ------------------------------------------------------------------
     # Layer 2: peer normalization. Severity is always "how many standard deviations from the
@@ -181,17 +191,19 @@ class SignalDetector:
 
         # CHECK A -- GWP band
         concern_mag, opp_mag, below_frac, above_frac, avg = self._gwp_band_raw(df, as_of_week)
-        gwp_slope = self._slope_series(df, as_of_week, "gwp_vs_plan_pct")
+        gwp_slope_primary = self._slope_series(df, as_of_week, "gwp_vs_plan_pct", window=config.TREND_WINDOW_WEEKS)
+        gwp_slope_secondary = self._slope_series(df, as_of_week, "gwp_vs_plan_pct",
+                                                  window=max(3, config.TREND_WINDOW_WEEKS - 2))
         for lob in config.LINES_OF_BUSINESS:
             if below_frac[lob] >= config.GWP_SUSTAINED_FRACTION and concern_mag[lob] > 0:
-                traj, traj_z = self._trajectory(gwp_slope, lob, deteriorating_sign=-1)
+                traj, traj_z = self._trajectory(gwp_slope_primary, gwp_slope_secondary, lob, deteriorating_sign=-1)
                 findings.append(self._build(lob, "gwp_band", "concern", self._peer_z(concern_mag, lob),
                                              self._gwp_materiality(df, lob, as_of_week),
                                              f"Running at {avg[lob]:.0f}% of plan, with {below_frac[lob]*100:.0f}% of weeks "
                                              f"below the {config.GWP_BAND_LOW:.0f}% line — a sustained shortfall, not a one-off.",
                                              traj, traj_z))
             elif above_frac[lob] >= config.GWP_SUSTAINED_FRACTION and opp_mag[lob] > 0:
-                traj, traj_z = self._trajectory(gwp_slope, lob, deteriorating_sign=-1)
+                traj, traj_z = self._trajectory(gwp_slope_primary, gwp_slope_secondary, lob, deteriorating_sign=-1)
                 findings.append(self._build(lob, "gwp_band", "opportunity", self._peer_z(opp_mag, lob),
                                              self._gwp_materiality(df, lob, as_of_week),
                                              f"Running at {avg[lob]:.0f}% of plan, with {above_frac[lob]*100:.0f}% of weeks "
@@ -200,29 +212,36 @@ class SignalDetector:
 
         # CHECK B -- Hit rate collapse
         rel_drop, baseline_s, recent_s, weeks_below = self._hit_rate_raw(df, as_of_week)
-        # Trajectory uses HIT_RATE_RECENT_WEEKS (4), NOT the generic TREND_WINDOW_WEEKS (6) -- a 6-week
-        # window here would straddle the baseline/recent boundary this check itself defines, mixing the
-        # magnitude of the original collapse into the slope alongside whatever's happened since. Found
-        # by checking the real numbers directly: Cyber's 6-week slope was -2.86 (dominated by the crash
-        # itself, weeks 7-8 still at the ~24% baseline), while its actual post-collapse trajectory (the
-        # 4 weeks the check's own "recent" window covers) is +1.91 -- recovering, not still declining.
-        hit_rate_slope = self._slope_series(df, as_of_week, "hit_rate", window=config.HIT_RATE_RECENT_WEEKS)
+        # Primary window uses HIT_RATE_RECENT_WEEKS (4), NOT the generic TREND_WINDOW_WEEKS (6) -- a
+        # 6-week window here would straddle the baseline/recent boundary this check itself defines,
+        # mixing the magnitude of the original collapse into the slope alongside whatever's happened
+        # since. Found by checking the real numbers directly: Cyber's 6-week slope was -2.86 (dominated
+        # by the crash itself, weeks 7-8 still at the ~24% baseline), while its actual post-collapse
+        # trajectory (the 4 weeks the check's own "recent" window covers) is +1.91 -- recovering, not
+        # still declining. Secondary window (3) stays safely within the same "recent" period rather than
+        # reaching back toward baseline, so the robustness check doesn't reintroduce that same problem.
+        hit_rate_slope_primary = self._slope_series(df, as_of_week, "hit_rate", window=config.HIT_RATE_RECENT_WEEKS)
+        hit_rate_slope_secondary = self._slope_series(df, as_of_week, "hit_rate",
+                                                       window=max(3, config.HIT_RATE_RECENT_WEEKS - 2))
         sustained_min = min(self.min_sustained_weeks, config.HIT_RATE_RECENT_WEEKS)
         for lob in config.LINES_OF_BUSINESS:
             if rel_drop[lob] >= config.HIT_RATE_RELATIVE_DROP and weeks_below[lob] >= sustained_min:
-                traj, traj_z = self._trajectory(hit_rate_slope, lob, deteriorating_sign=-1)
+                traj, traj_z = self._trajectory(hit_rate_slope_primary, hit_rate_slope_secondary, lob, deteriorating_sign=-1)
                 findings.append(self._build(lob, "hit_rate_collapse", "concern", self._peer_z(rel_drop, lob), None,
                                              f"Hit rate fell from a {baseline_s[lob]:.0f}% baseline to {recent_s[lob]:.0f}% "
                                              f"recently — a {rel_drop[lob]*100:.0f}% drop, sustained across multiple weeks, not a single bad week.",
                                              traj, traj_z))
 
-        # CHECK C -- Loss ratio trend. Reuses the SAME slope already computed for detection itself
-        # (not a separate _slope_series call) -- the check's own trend-detection math and its
-        # trajectory classification are, for this one check, measuring the literal same thing.
+        # CHECK C -- Loss ratio trend. Primary trajectory reuses the SAME slope already computed for
+        # detection itself (not a separate _slope_series call) -- the check's own trend-detection math
+        # and its trajectory classification are, for this one check, measuring the literal same thing.
+        # Secondary window is still computed fresh for the robustness check.
         slope, latest = self._loss_ratio_raw(df, as_of_week)
+        loss_ratio_slope_secondary = self._slope_series(df, as_of_week, "attritional_loss_ratio_ytd",
+                                                         window=max(3, config.LOSS_RATIO_TREND_WINDOW - 2))
         for lob in config.LINES_OF_BUSINESS:
             if slope[lob] > config.LOSS_RATIO_SLOPE_ALERT and latest[lob] > config.LOSS_RATIO_PROXIMITY_FLOOR:
-                traj, traj_z = self._trajectory(slope, lob, deteriorating_sign=1)
+                traj, traj_z = self._trajectory(slope, loss_ratio_slope_secondary, lob, deteriorating_sign=1)
                 findings.append(self._build(lob, "loss_ratio_trend", "concern", self._peer_z(slope, lob), None,
                                              f"Loss ratio climbing {slope[lob]:.1f} points per week, now at {latest[lob]:.1f}% "
                                              f"against the {config.LOSS_RATIO_TARGET:.0f}% target — the trend, not just the level, is the concern.",
@@ -241,11 +260,13 @@ class SignalDetector:
 
         # CHECK E -- Pipeline friction, peer-relative
         rel_days, days, peer_mean = self._pipeline_raw(df, as_of_week)
-        pipeline_slope = self._slope_series(df, as_of_week, "avg_days_in_pipeline")
+        pipeline_slope_primary = self._slope_series(df, as_of_week, "avg_days_in_pipeline", window=config.TREND_WINDOW_WEEKS)
+        pipeline_slope_secondary = self._slope_series(df, as_of_week, "avg_days_in_pipeline",
+                                                       window=max(3, config.TREND_WINDOW_WEEKS - 2))
         peer_std = days.std()
         for lob in config.LINES_OF_BUSINESS:
             if peer_std > 0 and (days[lob] - peer_mean) / peer_std > config.PIPELINE_PEER_STD_THRESHOLD:
-                traj, traj_z = self._trajectory(pipeline_slope, lob, deteriorating_sign=1)
+                traj, traj_z = self._trajectory(pipeline_slope_primary, pipeline_slope_secondary, lob, deteriorating_sign=1)
                 findings.append(self._build(lob, "pipeline_friction", "concern", self._peer_z(rel_days, lob), None,
                                              f"Taking {days[lob]:.1f} days to move through the pipeline, versus a "
                                              f"{peer_mean:.1f}-day average across other lines — a modest gap worth watching, not a priority concern.",

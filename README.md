@@ -137,6 +137,20 @@ dominated by the crash rather than by what's happened since. Fixed by using the 
 window (`HIT_RATE_RECENT_WEEKS`, 4) for this one check specifically, since that's the period whose
 *own* direction is actually the question.
 
+A second, more serious bug, found by directly asking "is this classification robust, or did I get
+lucky with the default window?" rather than trusting a single number: Excess Casualty's GWP-vs-plan
+trajectory flipped between worsening, stable, and improving depending on whether the slope window was
+4, 5, 6, 7, or 8 weeks — its underlying slope is close to flat (~+0.4 points/week), so short-window
+noise dominates which direction a single window happens to lean. Environmental's loss-ratio
+trajectory, by contrast, stayed "worsening" across every one of those windows, because its slope
+(~2.7 points/week) is large enough that noise doesn't flip it. `SignalDetector._trajectory` now
+requires a primary window AND a second, shorter window to actually **agree** on direction before
+reporting worsening or improving; disagreement is itself the honest answer ("stable" — not enough
+signal to call a direction), not a coin-flip dressed up as a fact. This changed Excess Casualty's
+reported trajectory from a confident-sounding "improving" to the more honest "stable" — the headline
+finding above (Environmental is the only worsening finding) survives this change unaffected, since
+"stable" still isn't "worsening."
+
 **Categories** (`config.CHECK_CATEGORY`, `config.CATEGORY_EXPLANATION`): each check maps to a
 human-readable risk category (Premium Risk, Conversion Risk, Loss Cost Trend Risk, Claims Shock Risk,
 Distribution Friction Risk, Growth Opportunity), and every category has a one-sentence plain-language
@@ -283,7 +297,7 @@ edits from quietly widening its scope.
 
 ---
 
-## Test coverage (103 tests)
+## Test coverage (107 tests)
 
 | File | What it covers |
 |---|---|

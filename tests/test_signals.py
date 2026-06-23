@@ -284,6 +284,35 @@ def test_hit_rate_trajectory_uses_the_checks_own_recent_window_not_a_generic_one
 
 def test_trajectory_peer_z_handles_zero_variance_without_crashing():
     s = pd.Series({"A": 5.0, "B": 5.0, "C": 5.0})
-    label, z = SignalDetector._trajectory(s, "A", deteriorating_sign=1)
+    label, z = SignalDetector._trajectory(s, s, "A", deteriorating_sign=1)
     assert label == "stable"
     assert z == 0.0
+
+
+def test_trajectory_requires_agreement_across_two_windows():
+    # Regression test for a real robustness problem found by directly testing window sensitivity, not
+    # assumed from the implementation: a single window's slope can be noise-driven. If the two windows
+    # disagree on direction, the honest answer is "stable" (not enough signal to call a direction), not
+    # whichever window happened to be used as the default.
+    primary = pd.Series({"A": 2.0, "B": -2.0, "C": -2.0, "D": -2.0, "E": -2.0, "F": -2.0, "G": -2.0, "H": -2.0})
+    secondary_agrees = pd.Series({"A": 1.5, "B": -1.5, "C": -1.5, "D": -1.5, "E": -1.5, "F": -1.5, "G": -1.5, "H": -1.5})
+    secondary_disagrees = pd.Series({"A": -1.5, "B": 1.5, "C": 1.5, "D": 1.5, "E": 1.5, "F": 1.5, "G": 1.5, "H": 1.5})
+
+    label, _ = SignalDetector._trajectory(primary, secondary_agrees, "A", deteriorating_sign=1)
+    assert label == "worsening"  # both windows agree A is worsening relative to peers
+
+    label, _ = SignalDetector._trajectory(primary, secondary_disagrees, "A", deteriorating_sign=1)
+    assert label == "stable"  # windows disagree on direction -- honest answer is "not enough signal"
+
+
+def test_excess_casualty_trajectory_is_honestly_stable_not_a_noisy_improving():
+    # The actual, verified finding from a real robustness check: Excess Casualty's GWP-vs-plan slope is
+    # close to flat (~+0.4 points/week over the full dataset), and a single trajectory window's
+    # classification flips between worsening/stable/improving depending on whether the window is 4, 5,
+    # 6, 7, or 8 weeks. Before the two-window agreement requirement, this was reported as a confident
+    # "improving" -- which a different, equally defensible window choice would have called "worsening."
+    # The honest classification, once both windows are required to agree, is "stable".
+    result = SignalDetector().find_all(DataLoader().load())
+    ec = [f for f in result["all_concerns"] if f["lob"] == "Excess Casualty" and f["check"] == "gwp_band"]
+    assert len(ec) == 1
+    assert ec[0]["trajectory"] == "stable"
