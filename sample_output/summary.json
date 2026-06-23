@@ -8,7 +8,9 @@
       "category": "Premium Risk",
       "severity": 2.47,
       "materiality_usd": -811200.0,
-      "detail": "Running at 58% of plan, with 100% of weeks below the 85% line \u2014 a sustained shortfall, not a one-off."
+      "detail": "Running at 58% of plan, with 100% of weeks below the 85% line \u2014 a sustained shortfall, not a one-off.",
+      "trajectory": "stable",
+      "trajectory_z": -0.54
     },
     {
       "lob": "Cyber",
@@ -17,7 +19,9 @@
       "category": "Conversion Risk",
       "severity": 2.28,
       "materiality_usd": null,
-      "detail": "Hit rate fell from a 27% baseline to 9% recently \u2014 a 66% drop, sustained across multiple weeks, not a single bad week."
+      "detail": "Hit rate fell from a 27% baseline to 9% recently \u2014 a 66% drop, sustained across multiple weeks, not a single bad week.",
+      "trajectory": "improving",
+      "trajectory_z": -1.25
     },
     {
       "lob": "Transactional Liability",
@@ -26,7 +30,9 @@
       "category": "Claims Shock Risk",
       "severity": 1.98,
       "materiality_usd": 219173.0,
-      "detail": "Claims came in at $293,000 last week, well above the typical $73,827 \u2014 a sharp, one-week spike outside this line's normal range."
+      "detail": "Claims came in at $293,000 last week, well above the typical $73,827 \u2014 a sharp, one-week spike outside this line's normal range.",
+      "trajectory": null,
+      "trajectory_z": null
     },
     {
       "lob": "Environmental",
@@ -35,7 +41,9 @@
       "category": "Loss Cost Trend Risk",
       "severity": 1.76,
       "materiality_usd": null,
-      "detail": "Loss ratio climbing 2.7 points per week, now at 74.5% against the 60% target \u2014 the trend, not just the level, is the concern."
+      "detail": "Loss ratio climbing 2.7 points per week, now at 74.5% against the 60% target \u2014 the trend, not just the level, is the concern.",
+      "trajectory": "worsening",
+      "trajectory_z": 1.76
     },
     {
       "lob": "Political Risk",
@@ -44,7 +52,9 @@
       "category": "Distribution Friction Risk",
       "severity": 1.15,
       "materiality_usd": null,
-      "detail": "Taking 27.6 days to move through the pipeline, versus a 25.7-day average across other lines \u2014 a modest gap worth watching, not a priority concern."
+      "detail": "Taking 27.6 days to move through the pipeline, versus a 25.7-day average across other lines \u2014 a modest gap worth watching, not a priority concern.",
+      "trajectory": "improving",
+      "trajectory_z": -0.97
     }
   ],
   "all_opportunities": [
@@ -55,7 +65,9 @@
       "category": "Growth Opportunity",
       "severity": 2.47,
       "materiality_usd": 128200.0,
-      "detail": "Running at 124% of plan, with 92% of weeks above the 115% line \u2014 sustained overperformance, not a blip."
+      "detail": "Running at 124% of plan, with 92% of weeks above the 115% line \u2014 sustained overperformance, not a blip.",
+      "trajectory": "improving",
+      "trajectory_z": -1.06
     }
   ],
   "top_concerns": [
@@ -66,7 +78,9 @@
       "category": "Premium Risk",
       "severity": 2.47,
       "materiality_usd": -811200.0,
-      "detail": "Running at 58% of plan, with 100% of weeks below the 85% line \u2014 a sustained shortfall, not a one-off."
+      "detail": "Running at 58% of plan, with 100% of weeks below the 85% line \u2014 a sustained shortfall, not a one-off.",
+      "trajectory": "stable",
+      "trajectory_z": -0.54
     },
     {
       "lob": "Cyber",
@@ -75,7 +89,9 @@
       "category": "Conversion Risk",
       "severity": 2.28,
       "materiality_usd": null,
-      "detail": "Hit rate fell from a 27% baseline to 9% recently \u2014 a 66% drop, sustained across multiple weeks, not a single bad week."
+      "detail": "Hit rate fell from a 27% baseline to 9% recently \u2014 a 66% drop, sustained across multiple weeks, not a single bad week.",
+      "trajectory": "improving",
+      "trajectory_z": -1.25
     },
     {
       "lob": "Transactional Liability",
@@ -84,7 +100,9 @@
       "category": "Claims Shock Risk",
       "severity": 1.98,
       "materiality_usd": 219173.0,
-      "detail": "Claims came in at $293,000 last week, well above the typical $73,827 \u2014 a sharp, one-week spike outside this line's normal range."
+      "detail": "Claims came in at $293,000 last week, well above the typical $73,827 \u2014 a sharp, one-week spike outside this line's normal range.",
+      "trajectory": null,
+      "trajectory_z": null
     }
   ],
   "top_opportunities": [
@@ -95,7 +113,9 @@
       "category": "Growth Opportunity",
       "severity": 2.47,
       "materiality_usd": 128200.0,
-      "detail": "Running at 124% of plan, with 92% of weeks above the 115% line \u2014 sustained overperformance, not a blip."
+      "detail": "Running at 124% of plan, with 92% of weeks above the 115% line \u2014 sustained overperformance, not a blip.",
+      "trajectory": "improving",
+      "trajectory_z": -1.06
     }
   ],
   "near_miss_concerns": [
@@ -106,7 +126,9 @@
       "category": "Loss Cost Trend Risk",
       "severity": 1.76,
       "materiality_usd": null,
-      "detail": "Loss ratio climbing 2.7 points per week, now at 74.5% against the 60% target \u2014 the trend, not just the level, is the concern."
+      "detail": "Loss ratio climbing 2.7 points per week, now at 74.5% against the 60% target \u2014 the trend, not just the level, is the concern.",
+      "trajectory": "worsening",
+      "trajectory_z": 1.76
     }
   ],
   "portfolio_kpis": {
@@ -118,6 +140,37 @@
     "ytd_gwp_vs_plan_pct": 93.7,
     "portfolio_hit_rate_pct": 22.2
   },
-  "narrative": "For the week ending 2024-09-22, the portfolio is running at 93.7% of YTD plan, with a portfolio hit rate of 22.2%. Of the portfolio's 8 lines, 3 showed no flagged findings this week.\n\n### Top Concerns\n**Excess Casualty** (Premium Risk): Running at 58% of plan, with 100% of weeks below the 85% line \u2014 a sustained shortfall, not a one-off.\n**Cyber** (Conversion Risk): Hit rate fell from a 27% baseline to 9% recently \u2014 a 66% drop, sustained across multiple weeks, not a single bad week.\n**Transactional Liability** (Claims Shock Risk): Claims came in at $293,000 last week, well above the typical $73,827 \u2014 a sharp, one-week spike outside this line's normal range.\n\n### Also Close Behind\nAlso close behind the top 3: Environmental (Loss Cost Trend Risk).\n\n### Opportunity\n**Political Violence** (Growth Opportunity): Running at 124% of plan, with 92% of weeks above the 115% line \u2014 sustained overperformance, not a blip.\n\n### Recommended Actions\n- **Excess Casualty**: Review pricing, broker engagement, and underwriting appetite with the team.\n- **Cyber**: Review quotes, broker feedback, and pricing for this line.\n- **Transactional Liability**: Confirm with the claims team whether this is a one-off or a developing pattern.\n- **Political Violence**: Investigate whether this line's approach can be replicated elsewhere.",
+  "trend": {
+    "concerns": [
+      {
+        "lob": "Excess Casualty",
+        "status": "continuing",
+        "weeks_running": 12
+      },
+      {
+        "lob": "Cyber",
+        "status": "continuing",
+        "weeks_running": 4
+      },
+      {
+        "lob": "Transactional Liability",
+        "status": "new",
+        "weeks_running": 1
+      }
+    ],
+    "resolved_concerns": [
+      "Financial Institutions"
+    ],
+    "opportunity": {
+      "lob": "Political Violence",
+      "status": "continuing",
+      "weeks_running": 12
+    }
+  },
+  "net_materiality_usd": -463827.0,
+  "trajectory_contrast": [
+    "Environmental"
+  ],
+  "narrative": "For the week ending 2024-09-22, the portfolio is running at 93.7% of YTD plan, with a portfolio hit rate of 22.2%. Of the portfolio's 8 lines, 3 showed no flagged findings this week.\n\n### Top Concerns\n**Excess Casualty**, a Premium Risk for 12 weeks now: the line is writing less premium than budgeted, consistently, not just one bad week. Running at 58% of plan, with 100% of weeks below the 85% line \u2014 a sustained shortfall, not a one-off, with a cumulative variance of -$811,200, with no clear improvement or worsening in the underlying trend.\n**Cyber**, a Conversion Risk for 4 weeks now: fewer quotes are converting into bound policies than is normal for this line. Hit rate fell from a 27% baseline to 9% recently \u2014 a 66% drop, sustained across multiple weeks, not a single bad week, though the underlying trend is currently improving.\n**Transactional Liability**, newly a Claims Shock Risk this week: this kind of spike is either a one-off large claim or the early sign of a worsening pattern -- the data alone can't say which. Claims came in at $293,000 last week, well above the typical $73,827 \u2014 a sharp, one-week spike outside this line's normal range, with a cumulative variance of +$219,173.\n\n### Also Close Behind\nAlso close behind the top 3, worth a check-in: Environmental (Loss Cost Trend Risk -- claims activity relative to premium is trending the wrong way, not just sitting high). Worth noting: Environmental is the only finding in the entire portfolio currently getting worse -- every one of the top 3 and the opportunity is stable or improving.\n\n### Opportunity\n**Political Violence**, a Growth Opportunity for 12 weeks now: the line is writing more premium than budgeted, consistently. Running at 124% of plan, with 92% of weeks above the 115% line \u2014 sustained overperformance, not a blip, with a cumulative variance of +$128,200, though the underlying trend is currently improving.\n\n### Recommended Actions\n- **Excess Casualty**: Review pricing, broker engagement, and underwriting appetite with the team.\n- **Cyber**: Review quotes, broker feedback, and pricing for this line.\n- **Transactional Liability**: Confirm with the claims team whether this is a one-off or a developing pattern.\n- **Political Violence**: Investigate whether this line's approach can be replicated elsewhere.",
   "narrative_source": "template"
 }
