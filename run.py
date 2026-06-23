@@ -12,6 +12,10 @@ from pathlib import Path
 from agent import AnalystAgent
 from data import DataValidationError
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Mosaic weekly underwriting performance pack")

@@ -20,6 +20,10 @@ from data import DataValidationError
 from formatting import fmt_usd, escape_dollar_signs
 from staleness import fingerprint, is_stale
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 st.set_page_config(page_title="Mosaic Underwriting Performance Pack", layout="wide")
 
 # Equal-width, full-bleed tabs instead of Streamlit's default left-aligned, content-width tabs.
